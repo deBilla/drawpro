@@ -38,12 +38,12 @@ jobs:
               sudo swapon /swapfile
               echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
             fi
-            sudo rm -rf ~/deployment
-            mkdir -p ~/deployment
+            sudo rm -rf ~/drawpro-deployment
+            mkdir -p ~/drawpro-deployment
           '
 
       - name: Copy application files
-        run: scp -r . ${{ secrets.SERVER_HOST }}:~/deployment/
+        run: scp -r . ${{ secrets.SERVER_HOST }}:~/drawpro-deployment/
 
       - name: Inject DATABASE_URL
         # All other .env values stay exactly as committed — only DATABASE_URL is overridden.
@@ -51,29 +51,29 @@ jobs:
         # that can appear in passwords and break sed replacement strings.
         run: |
           ssh ${{ secrets.SERVER_HOST }} "
-            grep -v '^DATABASE_URL=' ~/deployment/apps/api/.env > /tmp/api_env.tmp
+            grep -v '^DATABASE_URL=' ~/drawpro-deployment/apps/api/.env > /tmp/api_env.tmp
             printf 'DATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' >> /tmp/api_env.tmp
-            mv /tmp/api_env.tmp ~/deployment/apps/api/.env
+            mv /tmp/api_env.tmp ~/drawpro-deployment/apps/api/.env
           "
 
       - name: Build images
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
-            cd ~/deployment
+            cd ~/drawpro-deployment
             docker compose -f infra/docker-compose.yml build
           '
 
       - name: Run database migrations
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
-            cd ~/deployment
+            cd ~/drawpro-deployment
             docker compose -f infra/docker-compose.yml run --rm api npx prisma migrate deploy
           '
 
       - name: Start services
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
-            cd ~/deployment
+            cd ~/drawpro-deployment
             docker compose -f infra/docker-compose.yml down
             docker compose -f infra/docker-compose.yml up -d
           '
@@ -81,7 +81,7 @@ jobs:
       - name: Verify deployment
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
-            cd ~/deployment
+            cd ~/drawpro-deployment
             docker compose -f infra/docker-compose.yml ps
             docker compose -f infra/docker-compose.yml logs --tail=30
             sudo swapon --show
