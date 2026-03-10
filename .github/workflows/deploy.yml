@@ -45,15 +45,21 @@ jobs:
       - name: Copy application files
         run: scp -r . ${{ secrets.SERVER_HOST }}:~/drawpro-deployment/
 
-      - name: Inject DATABASE_URL
-        # All other .env values stay exactly as committed — only DATABASE_URL is overridden.
-        # Uses grep+printf instead of sed to safely handle special characters (&, \, etc.)
-        # that can appear in passwords and break sed replacement strings.
+      - name: Generate environment files
         run: |
           ssh ${{ secrets.SERVER_HOST }} "
-            grep -v '^DATABASE_URL=' ~/drawpro-deployment/apps/api/.env > /tmp/api_env.tmp
-            printf 'DATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' >> /tmp/api_env.tmp
-            mv /tmp/api_env.tmp ~/drawpro-deployment/apps/api/.env
+            # Ensure the directories exist
+            mkdir -p ~/drawpro-deployment/apps/api
+            mkdir -p ~/drawpro-deployment/apps/collab
+
+            # Create the api .env file with your database URL secret
+            echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' > ~/drawpro-deployment/apps/api/.env
+            
+            # Add any other required API secrets here
+            # echo 'OTHER_SECRET=${{ secrets.OTHER_SECRET }}' >> ~/drawpro-deployment/apps/api/.env
+
+            # Create an empty collab .env file (or add secrets) so docker-compose doesn't crash
+            touch ~/drawpro-deployment/apps/collab/.env
           "
 
       - name: Build images
