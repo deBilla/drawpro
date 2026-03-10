@@ -1,0 +1,88 @@
+name: Deploy to Laptop Server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install cloudflared
+        run: |
+          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+          sudo dpkg -i cloudflared.deb
+
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_PRIVATE_KEY }}
+
+      - name: Add SSH config and known hosts
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_CONFIG }}" >> ~/.ssh/config
+
+      - name: Prepare server
+        run: |
+          ssh ${{ secrets.SERVER_HOST }} '
+            if ! sudo swapon --show | grep -q "/swapfile"; then
+              sudo fallocate -l 4G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+              echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+            fi
+            sudo rm -rf ~/deployment
+            mkdir -p ~/deployment
+          '
+
+      - name: Copy application files
+        run: scp -r . ${{ secrets.SERVER_HOST }}:~/deployment/
+
+      - name: Inject DATABASE_URL
+        # All other .env values stay exactly as committed — only DATABASE_URL is overridden.
+        # Uses grep+printf instead of sed to safely handle special characters (&, \, etc.)
+        # that can appear in passwords and break sed replacement strings.
+        run: |
+          ssh ${{ secrets.SERVER_HOST }} "
+            grep -v '^DATABASE_URL=' ~/deployment/apps/api/.env > /tmp/api_env.tmp
+            printf 'DATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' >> /tmp/api_env.tmp
+            mv /tmp/api_env.tmp ~/deployment/apps/api/.env
+          "
+
+      - name: Build images
+        run: |
+          ssh ${{ secrets.SERVER_HOST }} '
+            cd ~/deployment
+            docker compose -f infra/docker-compose.yml build
+          '
+
+      - name: Run database migrations
+        run: |
+          ssh ${{ secrets.SERVER_HOST }} '
+            cd ~/deployment
+            docker compose -f infra/docker-compose.yml run --rm api npx prisma migrate deploy
+          '
+
+      - name: Start services
+        run: |
+          ssh ${{ secrets.SERVER_HOST }} '
+            cd ~/deployment
+            docker compose -f infra/docker-compose.yml down
+            docker compose -f infra/docker-compose.yml up -d
+          '
+
+      - name: Verify deployment
+        run: |
+          ssh ${{ secrets.SERVER_HOST }} '
+            cd ~/deployment
+            docker compose -f infra/docker-compose.yml ps
+            docker compose -f infra/docker-compose.yml logs --tail=30
+            sudo swapon --show
+          '
