@@ -1,0 +1,70 @@
+version: '3.9'
+
+# Postgres is hosted on Supabase — set DATABASE_URL in apps/api/.env
+# Only the frontend (port 3010) is exposed externally.
+# All other services communicate over the internal Docker network.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: ../apps/api/.env
+    environment:
+      # DATABASE_URL comes from apps/api/.env (Supabase connection string)
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
+      FRONTEND_URL: http://localhost:3010
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  collab:
+    build:
+      context: ..
+      dockerfile: apps/collab/Dockerfile
+    restart: unless-stopped
+    env_file: ../apps/collab/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+      API_URL: http://api:3001
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: apps/frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '3010:80'   # only exposed port
+    depends_on:
+      - api
+      - collab
+
+volumes:
+  redis_data:
+  minio_data:
