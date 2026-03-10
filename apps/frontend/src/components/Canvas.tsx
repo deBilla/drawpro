@@ -1,6 +1,6 @@
 import { useRef, forwardRef, useImperativeHandle } from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
-import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw';
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 
 export interface CanvasHandle {
   getSaveData: () => { elements: unknown[]; appState: Record<string, unknown> };
