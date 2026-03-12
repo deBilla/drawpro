@@ -8,10 +8,12 @@ const router = Router();
 
 const createSchema = z.object({
   name: z.string().min(1).max(100),
+  encryptedName: z.string().optional(),
 });
 
 const updateSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(100).optional(),
+  encryptedName: z.string().optional(),
 });
 
 // GET /workspaces — list memberships
@@ -43,9 +45,11 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
 // POST /workspaces — create
 router.post('/', requireAuth, validate(createSchema), async (req: AuthRequest, res) => {
   try {
+    const hasEncryptedName = !!req.body.encryptedName;
     const workspace = await prisma.workspace.create({
       data: {
-        name: req.body.name,
+        name: hasEncryptedName ? '[encrypted]' : req.body.name,
+        encryptedName: req.body.encryptedName ?? null,
         ownerId: req.userId!,
         members: { create: { userId: req.userId!, role: 'owner' } },
       },
@@ -73,7 +77,11 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     if (!member) return res.status(404).json({ error: 'Workspace not found' });
 
-    return res.json({ data: { ...member.workspace, role: member.role } });
+    const sheets = member.workspace.sheets.map((s) => ({
+      ...s,
+      isEncrypted: s.ciphertext !== null,
+    }));
+    return res.json({ data: { ...member.workspace, sheets, role: member.role } });
   } catch (err) {
     console.error('[workspaces/get]', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -87,9 +95,13 @@ router.patch('/:id', requireAuth, validate(updateSchema), async (req: AuthReques
     if (!workspace || workspace.ownerId !== req.userId) {
       return res.status(403).json({ error: 'Not authorized' });
     }
+    const hasEncryptedName = !!req.body.encryptedName;
     const updated = await prisma.workspace.update({
       where: { id: req.params.id },
-      data: { name: req.body.name },
+      data: {
+        name: hasEncryptedName ? '[encrypted]' : (req.body.name ?? workspace.name),
+        encryptedName: hasEncryptedName ? req.body.encryptedName : (req.body.name ? null : workspace.encryptedName),
+      },
     });
     return res.json({ data: updated });
   } catch (err) {

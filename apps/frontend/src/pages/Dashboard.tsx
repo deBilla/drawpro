@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, FileText, LogOut, FolderOpen } from 'lucide-react';
+import { Plus, Trash2, FileText, LogOut, FolderOpen, Lock } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { authApi } from '../lib/api';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user, logout, cachedPrivateKey } = useAuthStore();
   const {
     workspaces,
     activeWorkspace,
+    decryptedNames,
+    decryptedSheetNames,
     loading,
     fetchWorkspaces,
     fetchWorkspace,
@@ -18,6 +20,8 @@ export default function Dashboard() {
     deleteWorkspace,
     createSheet,
     deleteSheet,
+    decryptWorkspaceNames,
+    decryptSheetNames,
   } = useWorkspaceStore();
 
   const [newWsName, setNewWsName] = useState('');
@@ -28,6 +32,19 @@ export default function Dashboard() {
   useEffect(() => {
     fetchWorkspaces();
   }, [fetchWorkspaces]);
+
+  // When private key becomes available, decrypt all workspace + sheet names
+  useEffect(() => {
+    if (cachedPrivateKey && workspaces.length > 0) {
+      decryptWorkspaceNames(cachedPrivateKey);
+    }
+  }, [cachedPrivateKey, workspaces.length, decryptWorkspaceNames]);
+
+  useEffect(() => {
+    if (cachedPrivateKey && activeWorkspace) {
+      decryptSheetNames(cachedPrivateKey);
+    }
+  }, [cachedPrivateKey, activeWorkspace?.id, decryptSheetNames]);
 
   async function handleLogout() {
     const refreshToken = localStorage.getItem('refreshToken') ?? '';
@@ -97,7 +114,11 @@ export default function Dashboard() {
               onClick={() => fetchWorkspace(ws.id)}
             >
               <FolderOpen size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-              <span style={styles.wsName}>{ws.name}</span>
+              <span style={styles.wsName}>
+                {decryptedNames[ws.id] ?? (ws.encryptedName
+                  ? <span style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.6 }}><Lock size={11} />Locked</span>
+                  : ws.name)}
+              </span>
               <button
                 style={styles.iconBtn}
                 onClick={(e) => { e.stopPropagation(); deleteWorkspace(ws.id); }}
@@ -119,7 +140,11 @@ export default function Dashboard() {
         ) : (
           <>
             <div style={styles.mainHeader}>
-              <h2 style={styles.wsTitle}>{activeWorkspace.name}</h2>
+              <h2 style={styles.wsTitle}>
+                {decryptedNames[activeWorkspace.id] ?? (activeWorkspace.encryptedName
+                  ? <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#94a3b8' }}><Lock size={18} />Encrypted Workspace</span>
+                  : activeWorkspace.name)}
+              </h2>
               <button style={styles.primaryBtn} onClick={() => setShowNewSheet(true)}>
                 <Plus size={16} /> New sheet
               </button>
@@ -146,11 +171,22 @@ export default function Dashboard() {
                   <div
                     style={styles.sheetPreview}
                     onClick={() => navigate(`/workspace/${activeWorkspace.id}/sheet/${sheet.id}`)}
+                    title={sheet.isEncrypted ? (decryptedSheetNames[sheet.id] ?? 'Encrypted sheet') : sheet.name}
                   >
-                    <FileText size={40} color="#94a3b8" />
+                    {sheet.isEncrypted
+                      ? <Lock size={36} color="#a5b4fc" />
+                      : <FileText size={40} color="#94a3b8" />}
                   </div>
                   <div style={styles.sheetFooter}>
-                    <span style={styles.sheetName}>{sheet.name}</span>
+                    <span style={styles.sheetName}>
+                      {sheet.isEncrypted
+                        ? decryptedSheetNames[sheet.id]
+                          ?? <span style={{ color: '#6366f1', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <Lock size={11} />
+                              {new Date(sheet.updatedAt).toLocaleDateString()}
+                            </span>
+                        : sheet.name}
+                    </span>
                     <button
                       style={styles.iconBtn}
                       onClick={() => deleteSheet(activeWorkspace.id, sheet.id)}

@@ -28,7 +28,24 @@ const refreshSchema = z.object({
   refreshToken: z.string(),
 });
 
+const keysSchema = z.object({
+  publicKey: z.string().min(1),
+  encryptedPrivateKey: z.string().min(1),
+  recoveryEncryptedPrivateKey: z.string().min(1),
+});
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Select shape used consistently across all user-returning endpoints
+const USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  publicKey: true,
+  encryptedPrivateKey: true,
+  recoveryEncryptedPrivateKey: true,
+  createdAt: true,
+} as const;
 
 function generateAccessToken(userId: string): string {
   return jwt.sign({ sub: userId }, ENV.JWT_ACCESS_SECRET, {
@@ -66,7 +83,7 @@ router.post('/register', validate(registerSchema), async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
       data: { email, passwordHash, name },
-      select: { id: true, email: true, name: true, createdAt: true },
+      select: USER_SELECT,
     });
 
     const accessToken = generateAccessToken(user.id);
@@ -84,7 +101,10 @@ router.post('/login', validate(loginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { ...USER_SELECT, passwordHash: true },
+    });
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -159,12 +179,55 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
-      select: { id: true, email: true, name: true, createdAt: true },
+      select: USER_SELECT,
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.json({ data: user });
   } catch (err) {
     console.error('[auth/me]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /auth/keys — upload the user's X25519 public key + argon2id-wrapped private key
+// The server never sees the passcode; this just persists the encrypted blob.
+router.put('/keys', requireAuth, validate(keysSchema), async (req: AuthRequest, res) => {
+  try {
+    const { publicKey, encryptedPrivateKey, recoveryEncryptedPrivateKey } = req.body as {
+      publicKey: string;
+      encryptedPrivateKey: string;
+      recoveryEncryptedPrivateKey: string;
+    };
+
+    // Validate encryptedPrivateKey shape
+    try {
+      const p = JSON.parse(encryptedPrivateKey) as Record<string, unknown>;
+      if (!p.ciphertext || !p.iv || !p.salt) {
+        return res.status(400).json({ error: 'encryptedPrivateKey must contain {ciphertext, iv, salt}' });
+      }
+    } catch {
+      return res.status(400).json({ error: 'encryptedPrivateKey must be valid JSON' });
+    }
+
+    // Validate recoveryEncryptedPrivateKey shape
+    try {
+      const p = JSON.parse(recoveryEncryptedPrivateKey) as Record<string, unknown>;
+      if (!p.ciphertext || !p.iv) {
+        return res.status(400).json({ error: 'recoveryEncryptedPrivateKey must contain {ciphertext, iv}' });
+      }
+    } catch {
+      return res.status(400).json({ error: 'recoveryEncryptedPrivateKey must be valid JSON' });
+    }
+
+    const user = await prisma.user.update({
+      where: { id: req.userId },
+      data: { publicKey, encryptedPrivateKey, recoveryEncryptedPrivateKey },
+      select: USER_SELECT,
+    });
+
+    return res.json({ data: user });
+  } catch (err) {
+    console.error('[auth/keys]', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

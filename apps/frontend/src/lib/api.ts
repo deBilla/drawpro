@@ -8,6 +8,8 @@ import type {
   CreateWorkspaceInput,
   CreateSheetInput,
   UpdateSheetInput,
+  SetUserKeysInput,
+  User,
   ApiResponse,
 } from '@drawpro/shared-types';
 
@@ -49,7 +51,7 @@ apiClient.interceptors.response.use(
     original._retry = true;
 
     if (isRefreshing) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         pendingRequests.push((newToken) => {
           if (original.headers) original.headers.Authorization = `Bearer ${newToken}`;
           resolve(apiClient(original));
@@ -102,6 +104,14 @@ export const authApi = {
     apiClient.get<ApiResponse<AuthTokens['user']>>('/auth/me').then((r) => r.data.data),
 };
 
+// ─── Keys — client-controlled encryption at rest ──────────────────────────────
+
+export const keysApi = {
+  /** Upload the user's X25519 public key + argon2id-wrapped private key. Returns updated User. */
+  setKeys: (body: SetUserKeysInput) =>
+    apiClient.put<ApiResponse<User>>('/auth/keys', body).then((r) => r.data.data),
+};
+
 // ─── Workspaces ──────────────────────────────────────────────────────────────
 
 export const workspacesApi = {
@@ -112,7 +122,9 @@ export const workspacesApi = {
     apiClient.post<ApiResponse<Workspace>>('/workspaces', body).then((r) => r.data.data),
 
   get: (id: string) =>
-    apiClient.get<ApiResponse<Workspace & { sheets: SheetSummary[] }>>(`/workspaces/${id}`).then((r) => r.data.data),
+    apiClient
+      .get<ApiResponse<Workspace & { sheets: SheetSummary[] }>>(`/workspaces/${id}`)
+      .then((r) => r.data.data),
 
   delete: (id: string) =>
     apiClient.delete(`/workspaces/${id}`),

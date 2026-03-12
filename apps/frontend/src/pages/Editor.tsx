@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save } from 'lucide-react';
 import { useSheetStore } from '../store/useSheetStore';
 import Canvas, { type CanvasHandle } from '../components/Canvas';
+import PasscodeModal from '../components/PasscodeModal';
 
 export default function Editor() {
   const { workspaceId, sheetId } = useParams<{
@@ -11,7 +12,16 @@ export default function Editor() {
   }>();
   const navigate = useNavigate();
   const canvasRef = useRef<CanvasHandle>(null);
-  const { currentSheet, saving, lastSaved, loadSheet, saveSheet, clear } = useSheetStore();
+  const {
+    currentSheet,
+    encryptedSheet,
+    saving,
+    lastSaved,
+    loadSheet,
+    saveSheet,
+    decryptAndLoad,
+    clear,
+  } = useSheetStore();
 
   useEffect(() => {
     if (workspaceId && sheetId) loadSheet(workspaceId, sheetId);
@@ -21,10 +31,12 @@ export default function Editor() {
   if (!workspaceId || !sheetId) return null;
 
   async function handleSave() {
-    if (!canvasRef.current) return;
+    if (!canvasRef.current || !currentSheet) return;
     const { elements, appState } = canvasRef.current.getSaveData();
-    await saveSheet(workspaceId!, sheetId!, elements, appState);
+    await saveSheet(workspaceId!, sheetId!, currentSheet.name, elements, appState);
   }
+
+  const sheetName = currentSheet?.name ?? encryptedSheet?.name ?? 'Loading…';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -33,13 +45,13 @@ export default function Editor() {
           <ArrowLeft size={16} /> Dashboard
         </button>
 
-        <span style={styles.sheetName}>{currentSheet?.name ?? 'Loading…'}</span>
+        <span style={styles.sheetName}>{sheetName}</span>
 
         <div style={styles.actions}>
           <span style={styles.saveStatus}>
             {saving ? 'Saving…' : lastSaved ? `Saved ${lastSaved.toLocaleTimeString()}` : ''}
           </span>
-          <button style={styles.saveBtn} onClick={handleSave} disabled={saving}>
+          <button style={styles.saveBtn} onClick={handleSave} disabled={saving || !!encryptedSheet}>
             <Save size={14} /> Save
           </button>
         </div>
@@ -52,10 +64,18 @@ export default function Editor() {
             initialElements={(currentSheet.elements as unknown[]) ?? []}
             initialAppState={(currentSheet.appState as Record<string, unknown>) ?? {}}
           />
-        ) : (
+        ) : !encryptedSheet ? (
           <div style={styles.loading}>Loading sheet…</div>
-        )}
+        ) : null}
       </div>
+
+      {/* Passcode modal — rendered on top of everything when decryption is pending */}
+      {encryptedSheet && (
+        <PasscodeModal
+          sheetName={encryptedSheet.name}
+          onUnlock={decryptAndLoad}
+        />
+      )}
     </div>
   );
 }

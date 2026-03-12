@@ -1,10 +1,16 @@
 import { create } from 'zustand';
 import type { Workspace, SheetSummary } from '@drawpro/shared-types';
 import { workspacesApi, sheetsApi } from '../lib/api';
+import { encryptWithPublicKey, decryptWithPrivateKey, decryptSheet } from '../lib/crypto';
+import { useAuthStore } from './useAuthStore';
 
 interface WorkspaceState {
   workspaces: Workspace[];
   activeWorkspace: (Workspace & { sheets: SheetSummary[] }) | null;
+  /** Decrypted workspace names keyed by workspace id. */
+  decryptedNames: Record<string, string>;
+  /** Decrypted sheet names keyed by sheet id. */
+  decryptedSheetNames: Record<string, string>;
   loading: boolean;
   error: string | null;
 
@@ -14,11 +20,48 @@ interface WorkspaceState {
   deleteWorkspace: (id: string) => Promise<void>;
   createSheet: (workspaceId: string, name: string) => Promise<SheetSummary>;
   deleteSheet: (workspaceId: string, sheetId: string) => Promise<void>;
+  /** Decrypt all workspace names using the cached private key. */
+  decryptWorkspaceNames: (privateKey: CryptoKey) => Promise<void>;
+  /** Decrypt all sheet names in the active workspace. */
+  decryptSheetNames: (privateKey: CryptoKey) => Promise<void>;
+}
+
+async function tryDecryptWorkspaceName(
+  encryptedName: string | null | undefined,
+  privateKey: CryptoKey,
+): Promise<string | null> {
+  if (!encryptedName) return null;
+  try {
+    return await decryptWithPrivateKey(encryptedName, privateKey);
+  } catch {
+    return null;
+  }
+}
+
+async function tryDecryptSheetName(
+  sheet: SheetSummary,
+  privateKey: CryptoKey,
+): Promise<string | null> {
+  if (!sheet.ciphertext || !sheet.iv || !sheet.authTag || !sheet.ephemeralPublicKey) return null;
+  try {
+    const payload = await decryptSheet(
+      sheet.ciphertext,
+      sheet.iv,
+      sheet.authTag,
+      sheet.ephemeralPublicKey,
+      privateKey,
+    );
+    return payload.name;
+  } catch {
+    return null;
+  }
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   workspaces: [],
   activeWorkspace: null,
+  decryptedNames: {},
+  decryptedSheetNames: {},
   loading: false,
   error: null,
 
@@ -27,6 +70,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     try {
       const workspaces = await workspacesApi.list();
       set({ workspaces, loading: false });
+
+      const { cachedPrivateKey } = useAuthStore.getState();
+      if (cachedPrivateKey) {
+        get().decryptWorkspaceNames(cachedPrivateKey);
+      }
     } catch (err: unknown) {
       set({ error: (err as Error).message, loading: false });
     }
@@ -37,14 +85,40 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     try {
       const ws = await workspacesApi.get(id);
       set({ activeWorkspace: ws, loading: false });
+
+      const { cachedPrivateKey } = useAuthStore.getState();
+      if (cachedPrivateKey) {
+        // Decrypt workspace name
+        if (ws.encryptedName) {
+          const decrypted = await tryDecryptWorkspaceName(ws.encryptedName, cachedPrivateKey);
+          if (decrypted) {
+            set((s) => ({ decryptedNames: { ...s.decryptedNames, [ws.id]: decrypted } }));
+          }
+        }
+        // Decrypt all sheet names in this workspace
+        get().decryptSheetNames(cachedPrivateKey);
+      }
     } catch (err: unknown) {
       set({ error: (err as Error).message, loading: false });
     }
   },
 
   async createWorkspace(name) {
-    const ws = await workspacesApi.create({ name });
-    set((s) => ({ workspaces: [ws, ...s.workspaces] }));
+    const { user } = useAuthStore.getState();
+    let body: Parameters<typeof workspacesApi.create>[0] = { name };
+
+    if (user?.publicKey) {
+      const encryptedName = await encryptWithPublicKey(name, user.publicKey);
+      body = { name: '[encrypted]', encryptedName };
+    }
+
+    const ws = await workspacesApi.create(body);
+    set((s) => ({
+      workspaces: [ws, ...s.workspaces],
+      decryptedNames: user?.publicKey
+        ? { ...s.decryptedNames, [ws.id]: name }
+        : s.decryptedNames,
+    }));
     return ws;
   },
 
@@ -53,6 +127,9 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     set((s) => ({
       workspaces: s.workspaces.filter((w) => w.id !== id),
       activeWorkspace: s.activeWorkspace?.id === id ? null : s.activeWorkspace,
+      decryptedNames: Object.fromEntries(
+        Object.entries(s.decryptedNames).filter(([k]) => k !== id),
+      ),
     }));
   },
 
@@ -62,6 +139,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       id: sheet.id,
       workspaceId: sheet.workspaceId,
       name: sheet.name,
+      isEncrypted: sheet.isEncrypted ?? false,
+      ciphertext: sheet.ciphertext,
+      iv: sheet.iv,
+      authTag: sheet.authTag,
+      ephemeralPublicKey: sheet.ephemeralPublicKey,
       version: sheet.version,
       createdAt: sheet.createdAt,
       updatedAt: sheet.updatedAt,
@@ -84,5 +166,39 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
           }
         : null,
     }));
+  },
+
+  async decryptWorkspaceNames(privateKey) {
+    const { workspaces } = get();
+    const updates: Record<string, string> = {};
+    await Promise.all(
+      workspaces.map(async (ws) => {
+        if (ws.encryptedName) {
+          const decrypted = await tryDecryptWorkspaceName(ws.encryptedName, privateKey);
+          if (decrypted) updates[ws.id] = decrypted;
+        }
+      }),
+    );
+    if (Object.keys(updates).length > 0) {
+      set((s) => ({ decryptedNames: { ...s.decryptedNames, ...updates } }));
+    }
+  },
+
+  async decryptSheetNames(privateKey) {
+    const { activeWorkspace } = get();
+    if (!activeWorkspace) return;
+
+    const updates: Record<string, string> = {};
+    await Promise.all(
+      activeWorkspace.sheets.map(async (sheet) => {
+        if (sheet.isEncrypted) {
+          const name = await tryDecryptSheetName(sheet, privateKey);
+          if (name) updates[sheet.id] = name;
+        }
+      }),
+    );
+    if (Object.keys(updates).length > 0) {
+      set((s) => ({ decryptedSheetNames: { ...s.decryptedSheetNames, ...updates } }));
+    }
   },
 }));
