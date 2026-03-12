@@ -1,8 +1,9 @@
-import { Router } from 'express';
+import { Router, Request, Response, CookieOptions } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import rateLimit from 'express-rate-limit';
 import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { validate } from '../middleware/validate';
@@ -11,7 +12,17 @@ import { ENV } from '../config/env';
 
 const router = Router();
 
-// ─── Schemas ─────────────────────────────────────────────────────────────────
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  message: { error: 'Too many attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ─── Schemas ──────────────────────────────────────────────────────────────────
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -24,10 +35,6 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
-const refreshSchema = z.object({
-  refreshToken: z.string(),
-});
-
 const keysSchema = z.object({
   publicKey: z.string().min(1),
   encryptedPrivateKey: z.string().min(1),
@@ -37,7 +44,6 @@ const keysSchema = z.object({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Select shape used consistently across all user-returning endpoints
 const USER_SELECT = {
   id: true,
   email: true,
@@ -48,6 +54,42 @@ const USER_SELECT = {
   recoveryCodesData: true,
   createdAt: true,
 } as const;
+
+/** Parse a JWT TTL string like '15m', '1h', '7d' into seconds. */
+function parseTTLSeconds(ttl: string): number {
+  const match = ttl.match(/^(\d+)([smhd])$/);
+  if (!match) return parseInt(ttl, 10);
+  const n = parseInt(match[1], 10);
+  const units: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  return n * (units[match[2]] ?? 1);
+}
+
+const isSecure = ENV.FRONTEND_URL.startsWith('https');
+
+function accessCookieOptions(): CookieOptions {
+  return {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'strict',
+    path: '/',
+    maxAge: parseTTLSeconds(ENV.JWT_ACCESS_TTL) * 1000,
+  };
+}
+
+function refreshCookieOptions(): CookieOptions {
+  return {
+    httpOnly: true,
+    secure: isSecure,
+    sameSite: 'strict',
+    path: '/',
+    maxAge: ENV.JWT_REFRESH_TTL * 1000,
+  };
+}
+
+function clearCookies(res: Response): void {
+  res.clearCookie('accessToken', { path: '/' });
+  res.clearCookie('refreshToken', { path: '/' });
+}
 
 function generateAccessToken(userId: string): string {
   return jwt.sign({ sub: userId }, ENV.JWT_ACCESS_SECRET, {
@@ -70,12 +112,17 @@ async function invalidateRefreshToken(userId: string, tokenId: string): Promise<
   await redis.del(`rt:${userId}:${tokenId}`);
 }
 
+function setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
+  res.cookie('accessToken', accessToken, accessCookieOptions());
+  res.cookie('refreshToken', refreshToken, refreshCookieOptions());
+}
+
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // POST /auth/register
-router.post('/register', validate(registerSchema), async (req, res) => {
+router.post('/register', authLimiter, validate(registerSchema), async (req: Request, res: Response) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name } = req.body as { email: string; password: string; name?: string };
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -90,8 +137,9 @@ router.post('/register', validate(registerSchema), async (req, res) => {
 
     const accessToken = generateAccessToken(user.id);
     const refreshToken = await generateRefreshToken(user.id);
+    setAuthCookies(res, accessToken, refreshToken);
 
-    return res.status(201).json({ data: { accessToken, refreshToken, user } });
+    return res.status(201).json({ data: { user } });
   } catch (err) {
     console.error('[auth/register]', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -99,9 +147,9 @@ router.post('/register', validate(registerSchema), async (req, res) => {
 });
 
 // POST /auth/login
-router.post('/login', validate(loginSchema), async (req, res) => {
+router.post('/login', authLimiter, validate(loginSchema), async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body as { email: string; password: string };
 
     const user = await prisma.user.findUnique({
       where: { email },
@@ -113,9 +161,10 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 
     const accessToken = generateAccessToken(user.id);
     const refreshToken = await generateRefreshToken(user.id);
+    setAuthCookies(res, accessToken, refreshToken);
 
     const { passwordHash: _ph, ...safeUser } = user;
-    return res.json({ data: { accessToken, refreshToken, user: safeUser } });
+    return res.json({ data: { user: safeUser } });
   } catch (err) {
     console.error('[auth/login]', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -123,16 +172,19 @@ router.post('/login', validate(loginSchema), async (req, res) => {
 });
 
 // POST /auth/refresh
-router.post('/refresh', validate(refreshSchema), async (req, res) => {
+router.post('/refresh', authLimiter, async (req: Request, res: Response) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken =
+      (req.cookies as Record<string, string>)?.refreshToken ??
+      (req.body as Record<string, string>)?.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({ error: 'Missing refresh token' });
+    }
 
     let payload: { sub: string; jti: string };
     try {
-      payload = jwt.verify(refreshToken, ENV.JWT_REFRESH_SECRET) as {
-        sub: string;
-        jti: string;
-      };
+      payload = jwt.verify(refreshToken, ENV.JWT_REFRESH_SECRET) as { sub: string; jti: string };
     } catch {
       return res.status(401).json({ error: 'Invalid refresh token' });
     }
@@ -146,8 +198,9 @@ router.post('/refresh', validate(refreshSchema), async (req, res) => {
     await invalidateRefreshToken(payload.sub, payload.jti);
     const newAccessToken = generateAccessToken(payload.sub);
     const newRefreshToken = await generateRefreshToken(payload.sub);
+    setAuthCookies(res, newAccessToken, newRefreshToken);
 
-    return res.json({ data: { accessToken: newAccessToken, refreshToken: newRefreshToken } });
+    return res.json({ data: { message: 'ok' } });
   } catch (err) {
     console.error('[auth/refresh]', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -155,20 +208,18 @@ router.post('/refresh', validate(refreshSchema), async (req, res) => {
 });
 
 // POST /auth/logout
-router.post('/logout', requireAuth, async (req: AuthRequest, res) => {
+router.post('/logout', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { refreshToken } = req.body as { refreshToken?: string };
+    const refreshToken = (req.cookies as Record<string, string>)?.refreshToken;
     if (refreshToken) {
       try {
-        const payload = jwt.verify(refreshToken, ENV.JWT_REFRESH_SECRET) as {
-          sub: string;
-          jti: string;
-        };
+        const payload = jwt.verify(refreshToken, ENV.JWT_REFRESH_SECRET) as { sub: string; jti: string };
         await invalidateRefreshToken(payload.sub, payload.jti);
       } catch {
         // already expired — fine
       }
     }
+    clearCookies(res);
     return res.json({ data: { message: 'Logged out' } });
   } catch (err) {
     console.error('[auth/logout]', err);
@@ -177,7 +228,7 @@ router.post('/logout', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // GET /auth/me
-router.get('/me', requireAuth, async (req: AuthRequest, res) => {
+router.get('/me', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
@@ -193,7 +244,7 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
 
 // PUT /auth/keys — upload X25519 public key + argon2id-wrapped private key + recovery codes
 // The server never sees the passcode; this just persists the encrypted blobs.
-router.put('/keys', requireAuth, validate(keysSchema), async (req: AuthRequest, res) => {
+router.put('/keys', requireAuth, validate(keysSchema), async (req: AuthRequest, res: Response) => {
   try {
     const { publicKey, encryptedPrivateKey, salt, recoveryCodesData } = req.body as {
       publicKey: string;

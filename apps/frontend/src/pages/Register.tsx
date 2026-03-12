@@ -17,8 +17,8 @@ export default function Register() {
     setError('');
     setLoading(true);
     try {
-      const tokens = await authApi.register({ email, password, name: name || undefined });
-      login(tokens);
+      const { user } = await authApi.register({ email, password, name: name || undefined });
+      login(user);
       navigate('/');
     } catch (err: unknown) {
       setError(

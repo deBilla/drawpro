@@ -62,15 +62,14 @@ export type MemberRole = 'owner' | 'editor' | 'viewer';
 
 // ─── Auth types ──────────────────────────────────────────────────────────────
 
+/** Returned by /auth/login and /auth/register. Tokens are set as httpOnly cookies. */
 export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
   user: User;
 }
 
+/** /auth/refresh sets new cookies and returns a simple ack. */
 export interface RefreshResponse {
-  accessToken: string;
-  refreshToken: string;
+  message: string;
 }
 
 // ─── API response envelope ───────────────────────────────────────────────────

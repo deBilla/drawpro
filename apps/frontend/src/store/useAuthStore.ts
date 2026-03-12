@@ -1,12 +1,11 @@
 import { create } from 'zustand';
-import type { User, AuthTokens } from '@drawpro/shared-types';
+import type { User } from '@drawpro/shared-types';
 import { exportPrivateKeyToSession, importPrivateKeyFromSession } from '../lib/crypto';
 
 const SESSION_KEY = 'cachedPrivateKey';
 
 interface AuthState {
   user: User | null;
-  accessToken: string | null;
   isAuthenticated: boolean;
 
   /**
@@ -23,15 +22,14 @@ interface AuthState {
    */
   keyRestoring: boolean;
 
-  login: (tokens: AuthTokens) => void;
+  /** Called after a successful login/register — tokens are set as httpOnly cookies. */
+  login: (user: User) => void;
   logout: () => void;
-  setTokens: (tokens: { accessToken: string; refreshToken: string }) => void;
   updateUser: (user: User) => void;
   setCachedPrivateKey: (key: Uint8Array) => void;
 }
 
-// Sync hydration from localStorage
-const storedAccess = localStorage.getItem('accessToken');
+// Sync hydration from localStorage (user profile only — tokens live in httpOnly cookies)
 const storedUserRaw = localStorage.getItem('user');
 const storedUser: User | null = storedUserRaw ? (JSON.parse(storedUserRaw) as User) : null;
 
@@ -40,19 +38,15 @@ const willRestoreKey = !!(sessionB64 && storedUser);
 
 export const useAuthStore = create<AuthState>()((set) => ({
   user: storedUser,
-  accessToken: storedAccess,
-  isAuthenticated: !!storedAccess && !!storedUser,
+  isAuthenticated: !!storedUser,
   cachedPrivateKey: null,
   keyRestoring: willRestoreKey,
 
-  login(tokens) {
+  login(user) {
     sessionStorage.removeItem(SESSION_KEY);
-    localStorage.setItem('accessToken', tokens.accessToken);
-    localStorage.setItem('refreshToken', tokens.refreshToken);
-    localStorage.setItem('user', JSON.stringify(tokens.user));
+    localStorage.setItem('user', JSON.stringify(user));
     set({
-      user: tokens.user,
-      accessToken: tokens.accessToken,
+      user,
       isAuthenticated: true,
       cachedPrivateKey: null,
       keyRestoring: false,
@@ -61,16 +55,8 @@ export const useAuthStore = create<AuthState>()((set) => ({
 
   logout() {
     sessionStorage.removeItem(SESSION_KEY);
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
-    set({ user: null, accessToken: null, isAuthenticated: false, cachedPrivateKey: null, keyRestoring: false });
-  },
-
-  setTokens({ accessToken, refreshToken }) {
-    localStorage.setItem('accessToken', accessToken);
-    localStorage.setItem('refreshToken', refreshToken);
-    set({ accessToken });
+    set({ user: null, isAuthenticated: false, cachedPrivateKey: null, keyRestoring: false });
   },
 
   updateUser(user) {

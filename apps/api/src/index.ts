@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { ENV } from './config/env';
 import { ensureMinioBucket } from './lib/minio';
@@ -10,7 +12,9 @@ import sheetsRouter from './routes/sheets';
 
 const app = express();
 
+app.use(helmet());
 app.use(cors({ origin: ENV.FRONTEND_URL, credentials: true }));
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 
 // ─── Health ──────────────────────────────────────────────────────────────────

@@ -16,8 +16,8 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const tokens = await authApi.login({ email, password });
-      login(tokens);
+      const { user } = await authApi.login({ email, password });
+      login(user);
       navigate('/');
     } catch (err: unknown) {
       setError((err as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Login failed');

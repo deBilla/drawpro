@@ -47,8 +47,7 @@ export default function Dashboard() {
   }, [cachedPrivateKey, activeWorkspace?.id, decryptSheetNames]);
 
   async function handleLogout() {
-    const refreshToken = localStorage.getItem('refreshToken') ?? '';
-    await authApi.logout(refreshToken).catch(() => {});
+    await authApi.logout().catch(() => {});
     logout();
     navigate('/login');
   }

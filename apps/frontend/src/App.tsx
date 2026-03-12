@@ -30,16 +30,13 @@ function RequireGuest({ children }: { children: ReactNode }) {
 function EncryptionGate({ children }: { children: ReactNode }) {
   const { user, cachedPrivateKey, keyRestoring } = useAuthStore();
 
-  const needsSetup = !user?.publicKey;
-  const needsUnlock = !!user?.publicKey && !cachedPrivateKey && !keyRestoring;
+  // Silently wait while session key is being restored — prevents any flash
+  if (keyRestoring) return null;
 
-  return (
-    <>
-      {children}
-      {needsSetup && <PasscodeSetupModal />}
-      {needsUnlock && <GlobalUnlockModal />}
-    </>
-  );
+  if (!user?.publicKey) return <PasscodeSetupModal />;
+  if (!cachedPrivateKey) return <GlobalUnlockModal />;
+
+  return <>{children}</>;
 }
 
 /** PasscodeSetup wrapped in a full-screen modal overlay. */

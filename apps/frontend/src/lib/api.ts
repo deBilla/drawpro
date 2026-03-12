@@ -1,7 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type {
   AuthTokens,
-  RefreshResponse,
   Workspace,
   Sheet,
   SheetSummary,
@@ -18,22 +17,14 @@ const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 export const apiClient = axios.create({
   baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-});
-
-// ─── Auth token injection ────────────────────────────────────────────────────
-
-apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem('accessToken');
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+  // Send httpOnly auth cookies with every request
+  withCredentials: true,
 });
 
 // ─── Token refresh on 401 ────────────────────────────────────────────────────
 
 let isRefreshing = false;
-let pendingRequests: Array<(token: string) => void> = [];
+let pendingRequests: Array<() => void> = [];
 
 apiClient.interceptors.response.use(
   (response) => response,
@@ -52,34 +43,24 @@ apiClient.interceptors.response.use(
 
     if (isRefreshing) {
       return new Promise((resolve) => {
-        pendingRequests.push((newToken) => {
-          if (original.headers) original.headers.Authorization = `Bearer ${newToken}`;
-          resolve(apiClient(original));
-        });
+        pendingRequests.push(() => resolve(apiClient(original)));
       });
     }
 
     isRefreshing = true;
     try {
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) throw new Error('No refresh token');
+      // Refresh token is in the httpOnly cookie — no body needed
+      await apiClient.post('/auth/refresh');
 
-      const { data } = await apiClient.post<ApiResponse<RefreshResponse>>('/auth/refresh', {
-        refreshToken,
-      });
-
-      const { accessToken: newAccess, refreshToken: newRefresh } = data.data;
-      localStorage.setItem('accessToken', newAccess);
-      localStorage.setItem('refreshToken', newRefresh);
-
-      pendingRequests.forEach((cb) => cb(newAccess));
+      pendingRequests.forEach((cb) => cb());
       pendingRequests = [];
 
-      if (original.headers) original.headers.Authorization = `Bearer ${newAccess}`;
       return apiClient(original);
     } catch {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+      pendingRequests = [];
+      // Clear stored user so RequireGuest doesn't redirect back to '/' on reload
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('cachedPrivateKey');
       window.location.href = '/login';
       return Promise.reject(error);
     } finally {
@@ -97,11 +78,11 @@ export const authApi = {
   login: (body: { email: string; password: string }) =>
     apiClient.post<ApiResponse<AuthTokens>>('/auth/login', body).then((r) => r.data.data),
 
-  logout: (refreshToken: string) =>
-    apiClient.post('/auth/logout', { refreshToken }),
+  logout: () =>
+    apiClient.post('/auth/logout'),
 
   me: () =>
-    apiClient.get<ApiResponse<AuthTokens['user']>>('/auth/me').then((r) => r.data.data),
+    apiClient.get<ApiResponse<User>>('/auth/me').then((r) => r.data.data),
 };
 
 // ─── Keys — client-controlled encryption at rest ──────────────────────────────

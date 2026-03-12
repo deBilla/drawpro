@@ -240,7 +240,6 @@ export async function decryptPrivateKey(
 // ─── Recovery codes ───────────────────────────────────────────────────────────
 
 export interface RecoveryCodeData {
-  hash: string;
   encryptedPasscode: string;
   used: boolean;
 }
@@ -250,11 +249,6 @@ function generateRecoveryCode(): string {
   crypto.getRandomValues(buf);
   const n = ((buf[0] << 16) | (buf[1] << 8) | buf[2]) % 900000 + 100000;
   return n.toString();
-}
-
-async function hashRecoveryCode(code: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
-  return bytesToHex(new Uint8Array(digest));
 }
 
 async function encryptPasscodeWithCode(passcode: string, code: string, salt: string): Promise<string> {
@@ -287,33 +281,56 @@ async function encryptPasscodeWithCode(passcode: string, code: string, salt: str
   return bytesToHex(combined);
 }
 
-export async function decryptPasscodeWithRecoveryCode(
+async function tryDecryptPasscodeWithCode(
   encryptedPasscode: string,
   recoveryCode: string,
   salt: string,
+): Promise<string | null> {
+  try {
+    const saltBytes = toBuffer(hexToBytes(salt));
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(recoveryCode),
+      'PBKDF2',
+      false,
+      ['deriveKey'],
+    );
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: saltBytes, iterations: 100_000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt'],
+    );
+
+    const buf = hexToBytes(encryptedPasscode);
+    const iv = toBuffer(buf.slice(0, 12));
+    const ct = toBuffer(buf.slice(12));
+
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return new TextDecoder().decode(decrypted);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Try each recovery code entry in turn using AES-GCM decryption.
+ * Returns the decrypted passcode if any entry succeeds, throws if none do.
+ * This avoids storing a hash of the code (which would be brute-forceable
+ * since codes are only 6 digits).
+ */
+export async function decryptPasscodeWithRecoveryCode(
+  recoveryCodesData: RecoveryCodeData[],
+  recoveryCode: string,
+  salt: string,
 ): Promise<string> {
-  const saltBytes = toBuffer(hexToBytes(salt));
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(recoveryCode),
-    'PBKDF2',
-    false,
-    ['deriveKey'],
-  );
-  const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: saltBytes, iterations: 100_000, hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['decrypt'],
-  );
-
-  const buf = hexToBytes(encryptedPasscode);
-  const iv = toBuffer(buf.slice(0, 12));
-  const ct = toBuffer(buf.slice(12));
-
-  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-  return new TextDecoder().decode(decrypted);
+  for (const entry of recoveryCodesData) {
+    if (entry.used) continue;
+    const passcode = await tryDecryptPasscodeWithCode(entry.encryptedPasscode, recoveryCode, salt);
+    if (passcode !== null) return passcode;
+  }
+  throw new Error('Recovery code is invalid or has already been used.');
 }
 
 export async function generateRecoveryCodes(
@@ -327,7 +344,6 @@ export async function generateRecoveryCodes(
     const code = generateRecoveryCode();
     recoveryCodes.push(code);
     recoveryCodesData.push({
-      hash: await hashRecoveryCode(code),
       encryptedPasscode: await encryptPasscodeWithCode(passcode, code, salt),
       used: false,
     });
