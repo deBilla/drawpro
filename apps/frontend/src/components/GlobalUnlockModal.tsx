@@ -7,22 +7,38 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Lock, Loader, KeyRound } from 'lucide-react';
+import { Lock, Loader, KeyRound, ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { decryptPrivateKey } from '../lib/crypto';
+import { decryptPrivateKey, decryptPasscodeWithRecoveryCode, type RecoveryCodeData } from '../lib/crypto';
+import { keysApi } from '../lib/api';
+
+type Mode = 'unlock' | 'recover';
 
 export default function GlobalUnlockModal() {
-  const { user, setCachedPrivateKey } = useAuthStore();
+  const { user, setCachedPrivateKey, updateUser } = useAuthStore();
+  const [mode, setMode] = useState<Mode>('unlock');
+
+  // ── Unlock (passcode) state ──────────────────────────────────────────────────
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  // ── Recovery state ───────────────────────────────────────────────────────────
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const recoveryInputRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
-    // Small delay so the modal animation settles before grabbing focus
-    const t = setTimeout(() => inputRefs.current[0]?.focus(), 80);
-    return () => clearTimeout(t);
-  }, []);
+    if (mode === 'unlock') {
+      const t = setTimeout(() => inputRefs.current[0]?.focus(), 80);
+      return () => clearTimeout(t);
+    } else {
+      const t = setTimeout(() => recoveryInputRef.current?.focus(), 80);
+      return () => clearTimeout(t);
+    }
+  }, [mode]);
+
+  // ── Passcode unlock ──────────────────────────────────────────────────────────
 
   function handleChange(idx: number, value: string) {
     const v = value.replace(/\D/g, '').slice(-1);
@@ -30,10 +46,9 @@ export default function GlobalUnlockModal() {
     next[idx] = v;
     setDigits(next);
     if (v && idx < 5) inputRefs.current[idx + 1]?.focus();
-    // Auto-submit when all 6 digits are entered
     if (v && idx === 5) {
       const full = [...next].join('');
-      if (full.length === 6) submitPasscode(full);
+      if (full.length === 6) void submitPasscode(full);
     }
   }
 
@@ -61,29 +76,101 @@ export default function GlobalUnlockModal() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const passcode = digits.join('');
-    if (passcode.length !== 6) {
-      setError('Please enter all 6 digits.');
-      return;
-    }
+    if (passcode.length !== 6) { setError('Please enter all 6 digits.'); return; }
     await submitPasscode(passcode);
+  }
+
+  // ── Recovery code unlock ─────────────────────────────────────────────────────
+
+  async function handleRecovery(e: React.FormEvent) {
+    e.preventDefault();
+    const code = recoveryCode.trim();
+    if (!/^\d{6}$/.test(code)) { setError('Recovery code must be 6 digits.'); return; }
+
+    setError(null);
+    setBusy(true);
+    try {
+      const codesData = JSON.parse(user!.recoveryCodesData!) as RecoveryCodeData[];
+      const { passcode, usedIndex } = await decryptPasscodeWithRecoveryCode(codesData, code, user!.salt!);
+      const privateKey = await decryptPrivateKey(user!.encryptedPrivateKey!, passcode, user!.salt!);
+
+      // Mark the used code and persist to server
+      const updatedCodes = codesData.map((c, i) => i === usedIndex ? { ...c, used: true } : c);
+      const updatedUser = await keysApi.setKeys({
+        publicKey: user!.publicKey!,
+        encryptedPrivateKey: user!.encryptedPrivateKey!,
+        salt: user!.salt!,
+        recoveryCodesData: JSON.stringify(updatedCodes),
+      });
+      updateUser(updatedUser);
+      setCachedPrivateKey(privateKey);
+    } catch (err: unknown) {
+      setError((err as Error).message ?? 'Recovery failed. Check your code and try again.');
+      setBusy(false);
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  if (mode === 'recover') {
+    return (
+      <div style={st.overlay}>
+        <div style={st.card}>
+          <div style={{ ...st.iconRing, background: 'linear-gradient(135deg,#fef3c7,#fde68a)' }}>
+            <ShieldAlert size={26} color="#d97706" />
+          </div>
+          <h2 style={st.title}>Recovery Code</h2>
+          <p style={st.subtitle}>
+            Enter one of your <strong>6-digit recovery codes</strong> to unlock your account.
+            Each code can only be used once.
+          </p>
+          <p style={st.email}>{user?.email}</p>
+
+          <form onSubmit={handleRecovery} style={st.form}>
+            <input
+              ref={recoveryInputRef}
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={recoveryCode}
+              disabled={busy}
+              onChange={(e) => setRecoveryCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              style={st.recoveryInput}
+            />
+
+            {error && <div style={st.errorBox}><span>{error}</span></div>}
+
+            <button type="submit" style={st.btn} disabled={busy || recoveryCode.length !== 6}>
+              {busy ? (
+                <><Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> Verifying…</>
+              ) : (
+                <><KeyRound size={15} /> Recover Access</>
+              )}
+            </button>
+          </form>
+
+          <button style={st.linkBtn} onClick={() => { setMode('unlock'); setError(null); setRecoveryCode(''); }}>
+            ← Back to passcode
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div style={st.overlay}>
       <div style={st.card}>
-        {/* Icon */}
         <div style={st.iconRing}>
           <Lock size={26} color="#6366f1" />
         </div>
 
-        {/* Header */}
         <h2 style={st.title}>Unlock DrawPro</h2>
         <p style={st.subtitle}>
           Your data is encrypted. Enter your <strong>6-digit passcode</strong> to continue.
         </p>
         <p style={st.email}>{user?.email}</p>
 
-        {/* Digit inputs */}
         <form onSubmit={handleSubmit} style={st.form}>
           <div style={st.digitRow}>
             {digits.map((d, i) => (
@@ -106,28 +193,20 @@ export default function GlobalUnlockModal() {
             ))}
           </div>
 
-          {error && (
-            <div style={st.errorBox}>
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <div style={st.errorBox}><span>{error}</span></div>}
 
           <button type="submit" style={st.btn} disabled={busy || digits.join('').length !== 6}>
             {busy ? (
-              <>
-                <Loader size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                Unlocking…
-              </>
+              <><Loader size={15} style={{ animation: 'spin 1s linear infinite' }} /> Unlocking…</>
             ) : (
-              <>
-                <KeyRound size={15} />
-                Unlock
-              </>
+              <><KeyRound size={15} /> Unlock</>
             )}
           </button>
         </form>
 
-        <p style={st.hint}>Your passcode never leaves this device.</p>
+        <button style={st.linkBtn} onClick={() => { setMode('recover'); setError(null); setDigits(Array(6).fill('')); }}>
+          Forgot passcode? Use a recovery code
+        </button>
       </div>
     </div>
   );
@@ -240,5 +319,30 @@ const st: Record<string, React.CSSProperties> = {
     fontSize: 11,
     color: '#94a3b8',
     letterSpacing: '0.02em',
+  },
+  recoveryInput: {
+    width: '100%',
+    padding: '14px',
+    textAlign: 'center' as const,
+    fontSize: 28,
+    fontWeight: 700,
+    letterSpacing: '0.25em',
+    fontFamily: 'monospace',
+    border: '2px solid #e2e8f0',
+    borderRadius: 10,
+    outline: 'none',
+    boxSizing: 'border-box' as const,
+    background: '#f8fafc',
+  },
+  linkBtn: {
+    marginTop: 16,
+    background: 'none',
+    border: 'none',
+    color: '#6366f1',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    textDecoration: 'underline',
+    padding: 0,
   },
 };

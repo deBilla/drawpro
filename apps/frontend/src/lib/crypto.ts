@@ -316,19 +316,19 @@ async function tryDecryptPasscodeWithCode(
 
 /**
  * Try each recovery code entry in turn using AES-GCM decryption.
- * Returns the decrypted passcode if any entry succeeds, throws if none do.
- * This avoids storing a hash of the code (which would be brute-forceable
- * since codes are only 6 digits).
+ * Returns the decrypted passcode and the index of the matched entry if any succeeds,
+ * throws if none do. This avoids storing a hash of the code (which would be
+ * brute-forceable since codes are only 6 digits).
  */
 export async function decryptPasscodeWithRecoveryCode(
   recoveryCodesData: RecoveryCodeData[],
   recoveryCode: string,
   salt: string,
-): Promise<string> {
-  for (const entry of recoveryCodesData) {
-    if (entry.used) continue;
-    const passcode = await tryDecryptPasscodeWithCode(entry.encryptedPasscode, recoveryCode, salt);
-    if (passcode !== null) return passcode;
+): Promise<{ passcode: string; usedIndex: number }> {
+  for (let i = 0; i < recoveryCodesData.length; i++) {
+    if (recoveryCodesData[i].used) continue;
+    const passcode = await tryDecryptPasscodeWithCode(recoveryCodesData[i].encryptedPasscode, recoveryCode, salt);
+    if (passcode !== null) return { passcode, usedIndex: i };
   }
   throw new Error('Recovery code is invalid or has already been used.');
 }
