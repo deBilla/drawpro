@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(curl -s https://raw.githubusercontent.com/askOkara/okara-crypto/main/client-e2ee.ts)",
+      "Bash(curl -s https://raw.githubusercontent.com/askOkara/okara-crypto/main/server-e2ee.ts)",
+      "Bash(grep -v '^$')",
+      "Bash(python3 -c \"import sys,json; p=json.load\\(sys.stdin\\); print\\(''''exports:'''', list\\(p.get\\(''''exports'''',{}\\).keys\\(\\)\\)[:10]\\); print\\(''''main:'''', p.get\\(''''main''''\\)\\); print\\(''''module:'''', p.get\\(''''module''''\\)\\)\")"
     ]
   }
 }

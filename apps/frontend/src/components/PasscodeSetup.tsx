@@ -17,18 +17,21 @@ import {
 import { generateUserKeys } from '../lib/crypto';
 import { keysApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
+import type { SetUserKeysInput } from '@drawpro/shared-types';
 
 type Step = 'passcode' | 'recovery' | 'done';
 
 interface GeneratedKeys {
   publicKey: string;
+  privateKeyBytes: Uint8Array;
   encryptedPrivateKey: string;
-  recoveryEncryptedPrivateKey: string;
-  recoveryKeyDisplay: string;
+  salt: string;
+  recoveryCodes: string[];
+  recoveryCodesData: string;
 }
 
 export default function PasscodeSetup() {
-  const updateUser = useAuthStore((s) => s.updateUser);
+  const { updateUser, setCachedPrivateKey } = useAuthStore();
 
   const [step, setStep] = useState<Step>('passcode');
   const [passcode, setPasscode] = useState('');
@@ -96,19 +99,17 @@ export default function PasscodeSetup() {
   function handleDownload() {
     if (!keys) return;
     const lines = [
-      'DrawPro Encryption Recovery Key',
-      '================================',
+      'DrawPro Encryption Recovery Codes',
+      '===================================',
       '',
-      'Recovery Key:',
-      `  ${keys.recoveryKeyDisplay}`,
+      'Recovery Codes (6 one-time codes):',
+      ...keys.recoveryCodes.map((c, i) => `  ${i + 1}. ${c}`),
       '',
       'Instructions:',
-      '  • Store this key in a secure location (password manager, printed copy in a safe, etc.).',
-      '  • If you forget your 6-digit passcode, this key lets you recover access to your',
-      '    encrypted drawings.',
-      '  • This key was generated on your device and is NOT stored on DrawPro servers.',
-      '  • If you lose BOTH your passcode AND this recovery key, your encrypted drawings',
-      '    CANNOT be recovered by anyone, including DrawPro support.',
+      '  • Store these codes in a secure location (password manager, printed copy in a safe, etc.).',
+      '  • If you forget your 6-digit passcode, use one code to recover access.',
+      '  • Each code can only be used once.',
+      '  • These codes were generated on your device and are NOT stored on DrawPro servers.',
       '',
       `Generated: ${new Date().toISOString()}`,
     ];
@@ -116,14 +117,14 @@ export default function PasscodeSetup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'drawpro-recovery-key.txt';
+    a.download = 'drawpro-recovery-codes.txt';
     a.click();
     URL.revokeObjectURL(url);
   }
 
   async function handleCopy() {
     if (!keys) return;
-    await navigator.clipboard.writeText(keys.recoveryKeyDisplay);
+    await navigator.clipboard.writeText(keys.recoveryCodes.join('\n'));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -133,12 +134,15 @@ export default function PasscodeSetup() {
     setUploading(true);
     setError(null);
     try {
-      const updatedUser = await keysApi.setKeys({
+      const payload: SetUserKeysInput = {
         publicKey: keys.publicKey,
         encryptedPrivateKey: keys.encryptedPrivateKey,
-        recoveryEncryptedPrivateKey: keys.recoveryEncryptedPrivateKey,
-      });
-      updateUser(updatedUser); // sets user.publicKey → EncryptionGate unmounts this modal
+        salt: keys.salt,
+        recoveryCodesData: keys.recoveryCodesData,
+      };
+      const updatedUser = await keysApi.setKeys(payload);
+      updateUser(updatedUser);
+      setCachedPrivateKey(keys.privateKeyBytes); // cache immediately — no need to re-enter passcode
       setStep('done');
     } catch (err: unknown) {
       setError((err as Error).message ?? 'Failed to save keys to server.');
@@ -185,18 +189,26 @@ export default function PasscodeSetup() {
           </p>
         </div>
 
-        <p style={st.fieldLabel}>Your recovery key</p>
-        <div style={st.recoveryKeyBox}>
-          <code style={st.recoveryKeyText}>{keys.recoveryKeyDisplay}</code>
-          <button style={st.iconBtn} onClick={handleCopy} title="Copy to clipboard">
-            {copied ? <Check size={15} color="#16a34a" /> : <Copy size={15} />}
-          </button>
+        <p style={st.fieldLabel}>Your 6 recovery codes</p>
+        <div style={st.codesGrid}>
+          {keys.recoveryCodes.map((code, i) => (
+            <div key={i} style={st.codeCell}>
+              <span style={st.codeNum}>{i + 1}</span>
+              <code style={st.codeVal}>{code}</code>
+            </div>
+          ))}
         </div>
 
-        <button style={st.downloadBtn} onClick={handleDownload}>
-          <Download size={14} />
-          Download drawpro-recovery-key.txt
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <button style={{ ...st.downloadBtn, flex: 1, marginBottom: 0 }} onClick={handleDownload}>
+            <Download size={14} />
+            Download .txt
+          </button>
+          <button style={{ ...st.iconBtn, padding: '9px 14px', gap: 6, display: 'flex', alignItems: 'center' }} onClick={handleCopy}>
+            {copied ? <Check size={14} color="#16a34a" /> : <Copy size={14} />}
+            {copied ? 'Copied' : 'Copy all'}
+          </button>
+        </div>
 
         <label style={st.checkLabel}>
           <input
@@ -421,25 +433,33 @@ const st: Record<string, React.CSSProperties> = {
     color: '#64748b',
     margin: '12px 0 4px',
   },
-  recoveryKeyBox: {
+  codesGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+    gap: 8,
+    marginBottom: 14,
+  },
+  codeCell: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    background: '#f1f5f9',
-    border: '1.5px solid #cbd5e1',
-    borderRadius: 10,
-    padding: '14px 16px',
-    marginBottom: 10,
-    gap: 10,
+    gap: 6,
+    background: '#f8fafc',
+    border: '1.5px solid #e2e8f0',
+    borderRadius: 8,
+    padding: '8px 10px',
   },
-  recoveryKeyText: {
-    fontFamily: 'monospace',
-    fontSize: 15,
+  codeNum: {
+    fontSize: 10,
     fontWeight: 700,
-    letterSpacing: '0.08em',
-    color: '#0f172a',
-    userSelect: 'all' as const,
-    wordBreak: 'break-all' as const,
+    color: '#94a3b8',
+    minWidth: 14,
+  },
+  codeVal: {
+    fontFamily: 'monospace',
+    fontSize: 16,
+    fontWeight: 700,
+    color: '#1e293b',
+    letterSpacing: '0.05em',
   },
   iconBtn: {
     background: '#fff',

@@ -79,7 +79,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
 
     const sheets = member.workspace.sheets.map((s) => ({
       ...s,
-      isEncrypted: s.ciphertext !== null,
+      isEncrypted: s.encryptedData !== null,
     }));
     return res.json({ data: { ...member.workspace, sheets, role: member.role } });
   } catch (err) {

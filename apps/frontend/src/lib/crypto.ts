@@ -1,33 +1,62 @@
 /**
- * Client-Controlled Encryption at Rest — frontend crypto utilities
+ * DrawPro Client-Side E2EE — based on okara-crypto (github.com/askOkara/okara-crypto)
  *
  * Key design:
- *  - User's X25519 key pair is generated in the browser.
- *  - Private key is wrapped TWO ways:
- *      1. Passcode path:  argon2id(passcode, salt) → AES-256-GCM wrapping key
- *      2. Recovery path:  HKDF-SHA256(recoveryKeyBytes) → AES-256-GCM wrapping key
- *  - The server performs ECIES (ephemeral X25519 + HKDF-SHA512 + AES-256-GCM) on
- *    save and stores the encrypted payload. The client decrypts on load.
- *  - Passcode, recovery key, and all derived keys never leave the browser.
- *
- * Browser requirements: Chrome 133+, Firefox 130+, Safari 17.4+ (X25519 in Web Crypto)
+ *  - X25519 via @noble/curves (raw 32-byte keys, works on all modern browsers)
+ *  - Argon2id via @phi-ag/argon2 (128 MB, 4 iterations, 2 parallelism)
+ *  - Private key wrapped with AES-256-GCM (argon2id-derived key)
+ *  - Recovery: 6 one-time codes (PBKDF2-SHA256) each encrypt the passcode
+ *  - Sheet/workspace data: ECIES (ephemeral X25519 + HKDF-SHA512 + AES-256-GCM)
+ *  - AAD used on every AES-GCM call
+ *  - Wire format: eph_pub(32) | iv(16) | authTag(16) | ciphertext  — single base64 blob
  */
 
-import { argon2id } from 'hash-wasm';
+import initialize from '@phi-ag/argon2/fetch';
+import { Argon2Type } from '@phi-ag/argon2';
+import { x25519 } from '@noble/curves/ed25519';
+import argon2WasmUrl from '@phi-ag/argon2/argon2.wasm?url';
 
-// ─── argon2id parameters (aggressive for low-entropy 6-digit passcode) ────────
-const ARGON2_MEMORY_KB = 65536; // 64 MB
-const ARGON2_ITERATIONS = 3;
-const ARGON2_PARALLELISM = 1;
-const HKDF_SHEET_INFO = new TextEncoder().encode('drawpro-sheet-encryption');
-const HKDF_RECOVERY_INFO = new TextEncoder().encode('drawpro-recovery-key');
+// ─── Argon2id parameters ───────────────────────────────────────────────────────
+const ARGON2_PARAMS = {
+  memoryCost: 128 * 1024, // 128 MB
+  timeCost: 4,
+  parallelism: 2,
+  hashLength: 32,
+};
 
-// ─── Utility: base64 ↔ bytes ─────────────────────────────────────────────────
+// ─── HKDF / AAD constants ─────────────────────────────────────────────────────
+const HKDF_SALT = new TextEncoder().encode('drawpro-e2ee-salt');
+const HKDF_INFO = new TextEncoder().encode('drawpro-e2ee-key');
+const AAD_MESSAGE = new TextEncoder().encode('drawpro-e2ee-message');
+const AAD_PRIVATE_KEY = new TextEncoder().encode('drawpro-e2ee-private-key');
+
+// ─── Argon2 singleton ─────────────────────────────────────────────────────────
+let argon2Instance: Awaited<ReturnType<typeof initialize>> | null = null;
+
+async function getArgon2(): Promise<Awaited<ReturnType<typeof initialize>>> {
+  if (!argon2Instance) {
+    argon2Instance = await initialize(argon2WasmUrl);
+  }
+  return argon2Instance;
+}
+
+// ─── Uint8Array helpers ───────────────────────────────────────────────────────
+
+/** Copy any Uint8Array into a fresh ArrayBuffer so Web Crypto is happy. */
+function toBuffer(data: Uint8Array): Uint8Array<ArrayBuffer> {
+  const buf = new ArrayBuffer(data.length);
+  const copy = new Uint8Array(buf);
+  copy.set(data);
+  return copy;
+}
 
 export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + chunkSize)));
+  }
+  return btoa(chunks.join(''));
 }
 
 export function base64ToBytes(b64: string): Uint8Array {
@@ -37,421 +66,391 @@ export function base64ToBytes(b64: string): Uint8Array {
   return bytes;
 }
 
-// ─── Recovery key ─────────────────────────────────────────────────────────────
+// ─── Hex helpers ──────────────────────────────────────────────────────────────
 
-/**
- * Generate a 128-bit recovery key.
- *
- * Returns:
- *  - `bytes`: raw random bytes used to derive the AES wrapping key.
- *  - `display`: human-readable format `XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX`
- *               (4 groups of 8 uppercase hex chars). Safe to print / store offline.
- */
-export function generateRecoveryKey(): { bytes: Uint8Array; display: string } {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
-    .toUpperCase();
-  const display = (hex.match(/.{8}/g) ?? []).join('-');
-  return { bytes, display };
-}
-
-/**
- * Parse a recovery key display string back to raw bytes.
- * Accepts with or without dashes, case-insensitive.
- * Throws if the format is invalid.
- */
-export function parseRecoveryKey(display: string): Uint8Array {
-  const hex = display.replace(/-/g, '').toUpperCase();
-  if (!/^[0-9A-F]{32}$/.test(hex)) {
-    throw new Error('Invalid recovery key format. Expected 32 hex characters.');
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
   }
-  const bytes = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return bytes;
 }
 
-// ─── Internal key derivation ──────────────────────────────────────────────────
-
-/** Derive a 256-bit AES-GCM wrapping key from the user's passcode via argon2id. */
-async function deriveWrappingKeyFromPasscode(
-  passcode: string,
-  salt: Uint8Array,
-): Promise<CryptoKey> {
-  const rawKey = await argon2id({
-    password: passcode,
-    salt,
-    iterations: ARGON2_ITERATIONS,
-    memorySize: ARGON2_MEMORY_KB,
-    parallelism: ARGON2_PARALLELISM,
-    hashLength: 32,
-    outputType: 'binary',
-  });
-  return crypto.subtle.importKey('raw', rawKey, 'AES-GCM', false, ['encrypt', 'decrypt']);
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Derive a 256-bit AES-GCM wrapping key from the recovery key bytes via HKDF-SHA256.
- *  Recovery keys have 128-bit entropy so argon2id is not needed. */
-async function deriveWrappingKeyFromRecoveryKey(recoveryKeyBytes: Uint8Array): Promise<CryptoKey> {
-  const hkdfBase = await crypto.subtle.importKey('raw', recoveryKeyBytes, 'HKDF', false, [
-    'deriveKey',
-  ]);
-  return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: HKDF_RECOVERY_INFO },
-    hkdfBase,
-    { name: 'AES-GCM', length: 256 },
+// ─── PEM helpers ──────────────────────────────────────────────────────────────
+
+function privateKeyToPem(privateKeyBytes: Uint8Array): string {
+  const b64 = bytesToBase64(privateKeyBytes);
+  return `-----BEGIN PRIVATE KEY-----\n${b64.match(/.{1,64}/g)?.join('\n') ?? b64}\n-----END PRIVATE KEY-----`;
+}
+
+function pemToPrivateKeyBytes(pem: string): Uint8Array {
+  const b64 = pem
+    .replace('-----BEGIN PRIVATE KEY-----', '')
+    .replace('-----END PRIVATE KEY-----', '')
+    .replace(/\s/g, '');
+  const decoded = base64ToBytes(b64);
+  // PKCS#8 DER: look for OCTET STRING (0x04 0x20) holding the raw 32-byte key
+  if (decoded.length > 32) {
+    for (let i = 0; i <= decoded.length - 34; i++) {
+      if (decoded[i] === 0x04 && decoded[i + 1] === 0x20) {
+        const raw = decoded.slice(i + 2, i + 34);
+        if (raw.length === 32) return raw;
+      }
+    }
+    // Fallback: last 32 bytes
+    return decoded.slice(-32);
+  }
+  return decoded; // already raw 32 bytes
+}
+
+// ─── HKDF key derivation ──────────────────────────────────────────────────────
+
+async function deriveHKDFKey(
+  sharedSecret: Uint8Array,
+  length: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    toBuffer(sharedSecret),
+    { name: 'HKDF' },
     false,
-    ['encrypt', 'decrypt'],
+    ['deriveBits'],
   );
+
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-512', salt: toBuffer(HKDF_SALT), info: toBuffer(HKDF_INFO) },
+    keyMaterial,
+    length * 8,
+  );
+
+  // Copy into a fresh ArrayBuffer (TypeScript strict)
+  const result = new ArrayBuffer(length);
+  new Uint8Array(result).set(new Uint8Array(bits));
+  return new Uint8Array(result);
 }
 
-// ─── Key setup ────────────────────────────────────────────────────────────────
+// ─── Key pair generation ──────────────────────────────────────────────────────
 
-/**
- * Generate an X25519 key pair and wrap the private key two ways:
- *   1. With the passcode-derived key (argon2id) — for normal unlock.
- *   2. With the recovery-key-derived key (HKDF-SHA256) — for emergency recovery.
- *
- * Returns:
- *   - `publicKey`: base64 SPKI DER — uploaded to the server.
- *   - `encryptedPrivateKey`: JSON `{ciphertext, iv, salt}` — passcode path.
- *   - `recoveryEncryptedPrivateKey`: JSON `{ciphertext, iv}` — recovery path.
- *   - `recoveryKeyDisplay`: human-readable recovery key to show/download to user.
- */
-export async function generateUserKeys(passcode: string): Promise<{
-  publicKey: string;
-  encryptedPrivateKey: string;
-  recoveryEncryptedPrivateKey: string;
-  recoveryKeyDisplay: string;
+export async function generateX25519KeyPair(): Promise<{
+  publicKey: string;       // base64 of raw 32 bytes
+  privateKey: string;      // PEM-wrapped (used for encryptPrivateKey)
+  privateKeyBytes: Uint8Array;
 }> {
-  // Generate X25519 key pair (extractable so we can export the private key)
-  const keyPair = await crypto.subtle.generateKey(
-    { name: 'X25519' } as EcKeyGenParams,
-    true,
-    ['deriveBits'],
-  );
-
-  // Export public key → SPKI DER → base64
-  const pubDer = await crypto.subtle.exportKey('spki', keyPair.publicKey);
-  const publicKey = bytesToBase64(new Uint8Array(pubDer));
-
-  // Export private key → PKCS8 DER (used for both wrapping operations)
-  const privDer = await crypto.subtle.exportKey('pkcs8', keyPair.privateKey);
-
-  // ── Path 1: Passcode wrapping (argon2id) ────────────────────────────────────
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const passcodeWrappingKey = await deriveWrappingKeyFromPasscode(passcode, salt);
-  const passcodeIv = crypto.getRandomValues(new Uint8Array(12));
-  const encryptedWithPasscode = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: passcodeIv },
-    passcodeWrappingKey,
-    privDer,
-  );
-  const encryptedPrivateKey = JSON.stringify({
-    ciphertext: bytesToBase64(new Uint8Array(encryptedWithPasscode)), // includes auth tag
-    iv: bytesToBase64(passcodeIv),
-    salt: bytesToBase64(salt),
-  });
-
-  // ── Path 2: Recovery key wrapping (HKDF-SHA256) ────────────────────────────
-  const { bytes: recoveryKeyBytes, display: recoveryKeyDisplay } = generateRecoveryKey();
-  const recoveryWrappingKey = await deriveWrappingKeyFromRecoveryKey(recoveryKeyBytes);
-  const recoveryIv = crypto.getRandomValues(new Uint8Array(12));
-  const encryptedWithRecovery = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: recoveryIv },
-    recoveryWrappingKey,
-    privDer,
-  );
-  const recoveryEncryptedPrivateKey = JSON.stringify({
-    ciphertext: bytesToBase64(new Uint8Array(encryptedWithRecovery)), // includes auth tag
-    iv: bytesToBase64(recoveryIv),
-    // No salt — recovery key itself has 128-bit entropy; HKDF is sufficient
-  });
-
-  return { publicKey, encryptedPrivateKey, recoveryEncryptedPrivateKey, recoveryKeyDisplay };
+  const privateKeyBytes = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(32)));
+  const publicKeyBytes = x25519.getPublicKey(privateKeyBytes);
+  return {
+    publicKey: bytesToBase64(publicKeyBytes),
+    privateKey: privateKeyToPem(privateKeyBytes),
+    privateKeyBytes,
+  };
 }
 
-// ─── Private key decryption ───────────────────────────────────────────────────
+// ─── Salt generation ──────────────────────────────────────────────────────────
 
-/**
- * Decrypt the user's X25519 private key using their passcode.
- * Throws `DOMException` (OperationError) if the passcode is wrong.
- */
-export async function decryptUserPrivateKey(
-  encryptedPrivateKeyJson: string,
+export function generateSalt(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(32)));
+  return bytesToHex(bytes);
+}
+
+// ─── Private key encryption / decryption ─────────────────────────────────────
+
+/** Encrypt the PEM private key with the user's passcode via Argon2id + AES-256-GCM.
+ *  Returns a base64 blob: iv(16) | encrypted_pem_with_tag */
+export async function encryptPrivateKey(
+  privateKeyPem: string,
   passcode: string,
-): Promise<CryptoKey> {
-  const { ciphertext, iv, salt } = JSON.parse(encryptedPrivateKeyJson) as {
-    ciphertext: string;
-    iv: string;
-    salt: string;
-  };
-
-  const wrappingKey = await deriveWrappingKeyFromPasscode(passcode, base64ToBytes(salt));
-  const privDer = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToBytes(iv) },
-    wrappingKey,
-    base64ToBytes(ciphertext),
-  );
-
-  return crypto.subtle.importKey(
-    'pkcs8',
-    privDer,
-    { name: 'X25519' } as EcKeyImportParams,
-    true, // extractable so we can persist to sessionStorage
-    ['deriveBits'],
-  );
-}
-
-/**
- * Decrypt the user's X25519 private key using their recovery key.
- * `recoveryKeyDisplay` is the string shown to the user (e.g. `AABB1122-...`).
- * Throws `DOMException` (OperationError) if the recovery key is wrong.
- */
-export async function decryptUserPrivateKeyWithRecovery(
-  recoveryEncryptedPrivateKeyJson: string,
-  recoveryKeyDisplay: string,
-): Promise<CryptoKey> {
-  const { ciphertext, iv } = JSON.parse(recoveryEncryptedPrivateKeyJson) as {
-    ciphertext: string;
-    iv: string;
-  };
-
-  const recoveryKeyBytes = parseRecoveryKey(recoveryKeyDisplay);
-  const wrappingKey = await deriveWrappingKeyFromRecoveryKey(recoveryKeyBytes);
-  const privDer = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToBytes(iv) },
-    wrappingKey,
-    base64ToBytes(ciphertext),
-  );
-
-  return crypto.subtle.importKey(
-    'pkcs8',
-    privDer,
-    { name: 'X25519' } as EcKeyImportParams,
-    true, // extractable so we can persist to sessionStorage
-    ['deriveBits'],
-  );
-}
-
-// ─── Session persistence helpers ──────────────────────────────────────────────
-
-/**
- * Export an X25519 private CryptoKey to a base64 PKCS8 string.
- * Used to persist the decrypted key across page reloads in sessionStorage.
- */
-export async function exportPrivateKeyToSession(key: CryptoKey): Promise<string> {
-  const pkcs8 = await crypto.subtle.exportKey('pkcs8', key);
-  return bytesToBase64(new Uint8Array(pkcs8));
-}
-
-/**
- * Import an X25519 private key from a base64 PKCS8 string (from sessionStorage).
- */
-export async function importPrivateKeyFromSession(b64: string): Promise<CryptoKey> {
-  return crypto.subtle.importKey(
-    'pkcs8',
-    base64ToBytes(b64),
-    { name: 'X25519' } as EcKeyImportParams,
-    true,
-    ['deriveBits'],
-  );
-}
-
-// ─── Sheet decryption ─────────────────────────────────────────────────────────
-
-/**
- * Decrypt an encrypted sheet payload using the user's X25519 private key.
- *
- * Server encrypted with ECIES:
- *   ECDH(server_ephemeral_private, user_public) → shared_secret
- *   HKDF-SHA512(shared_secret, "drawpro-sheet-encryption") → aes_key
- *   AES-256-GCM(aes_key, plaintext) → ciphertext + iv + authTag
- */
-/**
- * Encrypt a short plaintext string (e.g. workspace name) with the user's own X25519 public key.
- * Uses the same ECIES scheme as the server: ephemeral X25519 + HKDF-SHA512 + AES-256-GCM.
- * Returns a JSON blob {ciphertext, iv, authTag, ephemeralPublicKey} (all base64).
- */
-export async function encryptWithPublicKey(
-  plaintext: string,
-  userPublicKeyB64: string,
+  salt: string,
 ): Promise<string> {
-  const userPublicKey = await crypto.subtle.importKey(
-    'spki',
-    base64ToBytes(userPublicKeyB64),
-    { name: 'X25519' } as EcKeyImportParams,
+  const saltBytes = hexToBytes(salt);
+
+  const argon2 = await getArgon2();
+  const hashResult = argon2.hash(passcode, {
+    salt: toBuffer(saltBytes),
+    type: Argon2Type.Argon2id,
+    memoryCost: ARGON2_PARAMS.memoryCost,
+    timeCost: ARGON2_PARAMS.timeCost,
+    parallelism: ARGON2_PARAMS.parallelism,
+    hashLength: ARGON2_PARAMS.hashLength,
+  });
+
+  const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(16)));
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    toBuffer(new Uint8Array(hashResult.hash)),
+    { name: 'AES-GCM' },
     false,
-    [],
+    ['encrypt'],
   );
 
-  const ephemeral = await crypto.subtle.generateKey(
-    { name: 'X25519' } as EcKeyGenParams,
-    true,
-    ['deriveBits'],
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: toBuffer(iv), additionalData: toBuffer(AAD_PRIVATE_KEY) },
+    cryptoKey,
+    new TextEncoder().encode(privateKeyPem),
   );
 
-  const sharedSecretBits = await crypto.subtle.deriveBits(
-    { name: 'X25519', public: userPublicKey } as EcdhKeyDeriveParams,
-    ephemeral.privateKey,
-    256,
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  return bytesToBase64(combined);
+}
+
+/** Decrypt the private key blob and return the raw 32-byte key bytes. */
+export async function decryptPrivateKey(
+  encryptedBase64: string,
+  passcode: string,
+  salt: string,
+): Promise<Uint8Array> {
+  const saltBytes = hexToBytes(salt);
+
+  const argon2 = await getArgon2();
+  const hashResult = argon2.hash(passcode, {
+    salt: toBuffer(saltBytes),
+    type: Argon2Type.Argon2id,
+    memoryCost: ARGON2_PARAMS.memoryCost,
+    timeCost: ARGON2_PARAMS.timeCost,
+    parallelism: ARGON2_PARAMS.parallelism,
+    hashLength: ARGON2_PARAMS.hashLength,
+  });
+
+  const combined = base64ToBytes(encryptedBase64);
+  const iv = combined.slice(0, 16);
+  const encrypted = combined.slice(16);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    toBuffer(new Uint8Array(hashResult.hash)),
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt'],
   );
 
-  const hkdfBase = await crypto.subtle.importKey('raw', sharedSecretBits, 'HKDF', false, [
-    'deriveKey',
-  ]);
-  const aesKey = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-512', salt: new Uint8Array(0), info: HKDF_SHEET_INFO },
-    hkdfBase,
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: toBuffer(iv), additionalData: toBuffer(AAD_PRIVATE_KEY) },
+    cryptoKey,
+    toBuffer(encrypted),
+  );
+
+  return pemToPrivateKeyBytes(new TextDecoder().decode(decrypted));
+}
+
+// ─── Recovery codes ───────────────────────────────────────────────────────────
+
+export interface RecoveryCodeData {
+  hash: string;
+  encryptedPasscode: string;
+  used: boolean;
+}
+
+function generateRecoveryCode(): string {
+  const buf = new Uint8Array(new ArrayBuffer(3));
+  crypto.getRandomValues(buf);
+  const n = ((buf[0] << 16) | (buf[1] << 8) | buf[2]) % 900000 + 100000;
+  return n.toString();
+}
+
+async function hashRecoveryCode(code: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
+  return bytesToHex(new Uint8Array(digest));
+}
+
+async function encryptPasscodeWithCode(passcode: string, code: string, salt: string): Promise<string> {
+  const saltBytes = toBuffer(hexToBytes(salt));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(code),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  );
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: saltBytes, iterations: 100_000, hash: 'SHA-256' },
+    keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt'],
   );
 
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)));
   const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    aesKey,
-    new TextEncoder().encode(plaintext),
+    { name: 'AES-GCM', iv: toBuffer(iv) },
+    key,
+    new TextEncoder().encode(passcode),
   );
 
-  // Web Crypto AES-GCM appends 16-byte auth tag to ciphertext
-  const encBytes = new Uint8Array(encrypted);
-  const ctBytes = encBytes.slice(0, -16);
-  const tagBytes = encBytes.slice(-16);
-
-  const ephemeralPublicKeyDer = await crypto.subtle.exportKey('spki', ephemeral.publicKey);
-
-  return JSON.stringify({
-    ciphertext: bytesToBase64(ctBytes),
-    iv: bytesToBase64(iv),
-    authTag: bytesToBase64(tagBytes),
-    ephemeralPublicKey: bytesToBase64(new Uint8Array(ephemeralPublicKeyDer)),
-  });
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  return bytesToHex(combined);
 }
 
-/**
- * Decrypt a value encrypted by encryptWithPublicKey using the user's private key.
- * Returns the original plaintext string.
- */
-export async function decryptWithPrivateKey(
-  encryptedJson: string,
-  userPrivateKey: CryptoKey,
+export async function decryptPasscodeWithRecoveryCode(
+  encryptedPasscode: string,
+  recoveryCode: string,
+  salt: string,
 ): Promise<string> {
-  const { ciphertext, iv, authTag, ephemeralPublicKey } = JSON.parse(encryptedJson) as {
-    ciphertext: string;
-    iv: string;
-    authTag: string;
-    ephemeralPublicKey: string;
-  };
-
-  const ephPubKey = await crypto.subtle.importKey(
-    'spki',
-    base64ToBytes(ephemeralPublicKey),
-    { name: 'X25519' } as EcKeyImportParams,
+  const saltBytes = toBuffer(hexToBytes(salt));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(recoveryCode),
+    'PBKDF2',
     false,
-    [],
+    ['deriveKey'],
   );
-
-  const sharedSecretBits = await crypto.subtle.deriveBits(
-    { name: 'X25519', public: ephPubKey } as EcdhKeyDeriveParams,
-    userPrivateKey,
-    256,
-  );
-
-  const hkdfBase = await crypto.subtle.importKey('raw', sharedSecretBits, 'HKDF', false, [
-    'deriveKey',
-  ]);
-  const aesKey = await crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-512', salt: new Uint8Array(0), info: HKDF_SHEET_INFO },
-    hkdfBase,
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: saltBytes, iterations: 100_000, hash: 'SHA-256' },
+    keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
     ['decrypt'],
   );
 
-  const ctBytes = base64ToBytes(ciphertext);
-  const tagBytes = base64ToBytes(authTag);
-  const combined = new Uint8Array(ctBytes.length + tagBytes.length);
-  combined.set(ctBytes);
-  combined.set(tagBytes, ctBytes.length);
+  const buf = hexToBytes(encryptedPasscode);
+  const iv = toBuffer(buf.slice(0, 12));
+  const ct = toBuffer(buf.slice(12));
+
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+  return new TextDecoder().decode(decrypted);
+}
+
+export async function generateRecoveryCodes(
+  passcode: string,
+  salt: string,
+): Promise<{ recoveryCodes: string[]; recoveryCodesData: RecoveryCodeData[] }> {
+  const recoveryCodes: string[] = [];
+  const recoveryCodesData: RecoveryCodeData[] = [];
+
+  for (let i = 0; i < 6; i++) {
+    const code = generateRecoveryCode();
+    recoveryCodes.push(code);
+    recoveryCodesData.push({
+      hash: await hashRecoveryCode(code),
+      encryptedPasscode: await encryptPasscodeWithCode(passcode, code, salt),
+      used: false,
+    });
+  }
+
+  return { recoveryCodes, recoveryCodesData };
+}
+
+// ─── Session persistence ──────────────────────────────────────────────────────
+// Private key is raw 32 bytes — just base64 encode/decode for sessionStorage.
+
+export function exportPrivateKeyToSession(key: Uint8Array): string {
+  return bytesToBase64(key);
+}
+
+export function importPrivateKeyFromSession(b64: string): Uint8Array {
+  return base64ToBytes(b64);
+}
+
+// ─── Full key setup (called from PasscodeSetup) ───────────────────────────────
+
+export async function generateUserKeys(passcode: string): Promise<{
+  publicKey: string;
+  privateKeyBytes: Uint8Array; // for immediate session caching
+  encryptedPrivateKey: string;
+  salt: string;
+  recoveryCodes: string[];
+  recoveryCodesData: string; // JSON
+}> {
+  const { publicKey, privateKey: pem, privateKeyBytes } = await generateX25519KeyPair();
+  const salt = generateSalt();
+  const encryptedPrivateKey = await encryptPrivateKey(pem, passcode, salt);
+  const { recoveryCodes, recoveryCodesData } = await generateRecoveryCodes(passcode, salt);
+  return {
+    publicKey,
+    privateKeyBytes,
+    encryptedPrivateKey,
+    salt,
+    recoveryCodes,
+    recoveryCodesData: JSON.stringify(recoveryCodesData),
+  };
+}
+
+// ─── Message encryption (ECIES) ───────────────────────────────────────────────
+// Wire format: eph_pub(32) | iv(16) | authTag(16) | ciphertext — single base64 blob
+
+export async function encryptMessage(message: string, publicKeyBase64: string): Promise<string> {
+  const ephPriv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(32)));
+  const ephPub = x25519.getPublicKey(ephPriv);
+
+  const recipientPub = base64ToBytes(publicKeyBase64);
+  const sharedSecret = x25519.getSharedSecret(ephPriv, recipientPub);
+  const aesKeyBytes = await deriveHKDFKey(sharedSecret, 32);
+
+  const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(16)));
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    aesKeyBytes,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt'],
+  );
+
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: toBuffer(iv), additionalData: toBuffer(AAD_MESSAGE) },
+    cryptoKey,
+    new TextEncoder().encode(message),
+  );
+
+  const encArr = new Uint8Array(encrypted);
+  const ciphertext = encArr.slice(0, -16);
+  const authTag = encArr.slice(-16);
+
+  // Combine: ephPub(32) | iv(16) | authTag(16) | ciphertext
+  const combined = new Uint8Array(32 + 16 + 16 + ciphertext.length);
+  combined.set(ephPub, 0);
+  combined.set(iv, 32);
+  combined.set(authTag, 48);
+  combined.set(ciphertext, 64);
+  return bytesToBase64(combined);
+}
+
+export async function decryptMessage(
+  encryptedBase64: string,
+  privateKeyBytes: Uint8Array,
+): Promise<string> {
+  const buf = base64ToBytes(encryptedBase64);
+  const ephPub = buf.slice(0, 32);
+  const iv = buf.slice(32, 48);
+  const authTag = buf.slice(48, 64);
+  const ciphertext = buf.slice(64);
+
+  const sharedSecret = x25519.getSharedSecret(privateKeyBytes, ephPub);
+  const aesKeyBytes = await deriveHKDFKey(sharedSecret, 32);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    aesKeyBytes,
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt'],
+  );
+
+  // Reassemble ciphertext + authTag for AES-GCM
+  const ctWithTag = new Uint8Array(ciphertext.length + authTag.length);
+  ctWithTag.set(ciphertext);
+  ctWithTag.set(authTag, ciphertext.length);
 
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToBytes(iv), tagLength: 128 },
-    aesKey,
-    combined,
+    { name: 'AES-GCM', iv: toBuffer(iv), additionalData: toBuffer(AAD_MESSAGE) },
+    cryptoKey,
+    toBuffer(ctWithTag),
   );
 
   return new TextDecoder().decode(decrypted);
 }
 
-// ─── Sheet decryption ─────────────────────────────────────────────────────────
+// ─── Sheet decryption (convenience wrapper) ───────────────────────────────────
 
-/**
- * Decrypt an encrypted sheet payload using the user's X25519 private key.
- *
- * Server encrypted with ECIES:
- *   ECDH(server_ephemeral_private, user_public) → shared_secret
- *   HKDF-SHA512(shared_secret, "drawpro-sheet-encryption") → aes_key
- *   AES-256-GCM(aes_key, plaintext) → ciphertext + iv + authTag
- */
 export async function decryptSheet(
-  ciphertext: string,
-  iv: string,
-  authTag: string,
-  ephemeralPublicKey: string,
-  userPrivateKey: CryptoKey,
+  encryptedData: string,
+  privateKeyBytes: Uint8Array,
 ): Promise<{ name: string; elements: unknown[]; appState: Record<string, unknown> }> {
-  // Import the server's ephemeral public key (SPKI DER)
-  const ephPubKey = await crypto.subtle.importKey(
-    'spki',
-    base64ToBytes(ephemeralPublicKey),
-    { name: 'X25519' } as EcKeyImportParams,
-    false,
-    [],
-  );
-
-  // ECDH: derive 256-bit shared secret
-  const sharedSecretBits = await crypto.subtle.deriveBits(
-    { name: 'X25519', public: ephPubKey } as EcdhKeyDeriveParams,
-    userPrivateKey,
-    256,
-  );
-
-  // HKDF-SHA512: shared secret → AES-256-GCM key (matches server's hkdfSync)
-  const hkdfBase = await crypto.subtle.importKey('raw', sharedSecretBits, 'HKDF', false, [
-    'deriveKey',
-  ]);
-  const aesKey = await crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-512',
-      salt: new Uint8Array(0),
-      info: HKDF_SHEET_INFO,
-    },
-    hkdfBase,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['decrypt'],
-  );
-
-  // Web Crypto AES-GCM expects: ciphertext || authTag as one buffer
-  const ctBytes = base64ToBytes(ciphertext);
-  const tagBytes = base64ToBytes(authTag);
-  const combined = new Uint8Array(ctBytes.length + tagBytes.length);
-  combined.set(ctBytes);
-  combined.set(tagBytes, ctBytes.length);
-
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToBytes(iv), tagLength: 128 },
-    aesKey,
-    combined,
-  );
-
-  return JSON.parse(new TextDecoder().decode(decrypted)) as {
-    name: string;
-    elements: unknown[];
-    appState: Record<string, unknown>;
-  };
+  const json = await decryptMessage(encryptedData, privateKeyBytes);
+  return JSON.parse(json) as { name: string; elements: unknown[]; appState: Record<string, unknown> };
 }

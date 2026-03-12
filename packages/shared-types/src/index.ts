@@ -4,12 +4,14 @@ export interface User {
   id: string;
   email: string;
   name?: string | null;
-  /** base64 SPKI DER of the user's X25519 public key. Null if encryption not set up. */
+  /** base64 raw 32-byte X25519 public key. Null if encryption not set up. */
   publicKey?: string | null;
-  /** JSON blob: {ciphertext, iv, salt} — passcode-wrapped X25519 private key. Null if encryption not set up. */
+  /** base64 blob: iv(16)|AES-GCM(argon2id(passcode), pem). Null if encryption not set up. */
   encryptedPrivateKey?: string | null;
-  /** JSON blob: {ciphertext, iv} — recovery-key-wrapped X25519 private key. Null if encryption not set up. */
-  recoveryEncryptedPrivateKey?: string | null;
+  /** hex — Argon2id + PBKDF2 salt. Null if encryption not set up. */
+  salt?: string | null;
+  /** JSON: RecoveryCodeData[] — 6 PBKDF2-encrypted passcode backups. */
+  recoveryCodesData?: string | null;
   createdAt: string;
 }
 
@@ -35,11 +37,8 @@ export interface Sheet {
   // Plaintext fields — populated when user has no encryption keys
   elements: unknown[] | null;
   appState: Record<string, unknown> | null;
-  // Encrypted fields — populated when sheet is encrypted (name included inside ciphertext)
-  ciphertext?: string | null;
-  iv?: string | null;
-  authTag?: string | null;
-  ephemeralPublicKey?: string | null;
+  // Encrypted field — single blob: eph_pub(32)|iv(16)|authTag(16)|ciphertext
+  encryptedData?: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -52,11 +51,8 @@ export interface SheetSummary {
   name: string;
   /** True when name + content are encrypted — use as display hint in list views. */
   isEncrypted: boolean;
-  // Encrypted fields — present so the client can decrypt the name in list views
-  ciphertext?: string | null;
-  iv?: string | null;
-  authTag?: string | null;
-  ephemeralPublicKey?: string | null;
+  // Present so the client can decrypt the name in list/dashboard views
+  encryptedData?: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -119,10 +115,12 @@ export interface UpdateSheetInput {
 }
 
 export interface SetUserKeysInput {
-  /** base64 SPKI DER of the user's X25519 public key */
+  /** base64 raw 32-byte X25519 public key */
   publicKey: string;
-  /** JSON: {ciphertext, iv, salt} — passcode-wrapped private key */
+  /** base64 blob: iv(16)|AES-GCM(argon2id(passcode), pem) */
   encryptedPrivateKey: string;
-  /** JSON: {ciphertext, iv} — recovery-key-wrapped private key */
-  recoveryEncryptedPrivateKey: string;
+  /** hex salt used for argon2id and recovery PBKDF2 */
+  salt: string;
+  /** JSON: RecoveryCodeData[] */
+  recoveryCodesData: string;
 }

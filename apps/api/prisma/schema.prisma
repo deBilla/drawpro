@@ -13,9 +13,11 @@ model User {
   email               String   @unique
   passwordHash        String
   name                String?
-  publicKey                   String?  // base64 SPKI DER of X25519 public key
-  encryptedPrivateKey         String?  // JSON: {ciphertext, iv, salt} — passcode-wrapped X25519 private key
-  recoveryEncryptedPrivateKey String?  // JSON: {ciphertext, iv} — recovery-key-wrapped X25519 private key
+  // E2EE fields (null until user sets up encryption)
+  publicKey           String?  // base64 raw 32-byte X25519 public key
+  encryptedPrivateKey String?  // base64 blob: iv(16)|AES-GCM(argon2id(passcode), pem)
+  salt                String?  // hex — used for argon2id and PBKDF2 recovery codes
+  recoveryCodesData   String?  // JSON: RecoveryCodeData[] — 6 PBKDF2-encrypted passcode backups
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -26,7 +28,7 @@ model User {
 model Workspace {
   id            String   @id @default(cuid())
   name          String
-  encryptedName String?  // JSON: {ciphertext,iv,authTag,ephemeralPublicKey} — client-encrypted name
+  encryptedName String?  // base64 ECIES blob — client-encrypted name
   ownerId       String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -55,11 +57,8 @@ model Sheet {
   // Plaintext storage (used when user has no encryption keys)
   elements           Json?
   appState           Json?
-  // Encrypted storage (used when user has encryption keys set up)
-  ciphertext         String?  // base64 AES-256-GCM encrypted JSON
-  iv                 String?  // base64 12-byte AES-GCM IV
-  authTag            String?  // base64 16-byte AES-GCM auth tag
-  ephemeralPublicKey String?  // base64 SPKI DER of server's ephemeral X25519 public key
+  // Encrypted storage — single blob: eph_pub(32)|iv(16)|authTag(16)|ciphertext
+  encryptedData      String?
   version            Int      @default(0)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

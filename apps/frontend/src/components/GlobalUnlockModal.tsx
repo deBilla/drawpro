@@ -9,7 +9,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Lock, Loader, KeyRound } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
-import { decryptUserPrivateKey } from '../lib/crypto';
+import { decryptPrivateKey } from '../lib/crypto';
 
 export default function GlobalUnlockModal() {
   const { user, setCachedPrivateKey } = useAuthStore();
@@ -48,7 +48,7 @@ export default function GlobalUnlockModal() {
     setError(null);
     setBusy(true);
     try {
-      const privateKey = await decryptUserPrivateKey(user!.encryptedPrivateKey!, passcode);
+      const privateKey = await decryptPrivateKey(user!.encryptedPrivateKey!, passcode, user!.salt!);
       setCachedPrivateKey(privateKey);
     } catch {
       setError('Wrong passcode — please try again.');

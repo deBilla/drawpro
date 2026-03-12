@@ -10,33 +10,31 @@ interface AuthState {
   isAuthenticated: boolean;
 
   /**
-   * The user's X25519 private key, decrypted from `user.encryptedPrivateKey`.
-   * Persisted in sessionStorage across page reloads (same tab).
-   * Cleared on logout or when the user closes the tab.
+   * The user's raw 32-byte X25519 private key.
+   * Persisted in sessionStorage (base64) so page refreshes within the same tab
+   * don't require re-entering the passcode.
+   * Cleared on logout.
    */
-  cachedPrivateKey: CryptoKey | null;
+  cachedPrivateKey: Uint8Array | null;
 
   /**
-   * True while the session-stored private key is being asynchronously re-imported
-   * on page reload. Prevents a false "unlock required" flash during restore.
+   * True while the session-stored key is being restored from sessionStorage on
+   * page reload. Prevents the GlobalUnlockModal from flashing before restore completes.
    */
   keyRestoring: boolean;
 
   login: (tokens: AuthTokens) => void;
   logout: () => void;
   setTokens: (tokens: { accessToken: string; refreshToken: string }) => void;
-  /** Called after a successful PUT /auth/keys to update the user record in state. */
   updateUser: (user: User) => void;
-  /** Cache the decrypted X25519 private key; persists to sessionStorage for this tab. */
-  setCachedPrivateKey: (key: CryptoKey) => void;
+  setCachedPrivateKey: (key: Uint8Array) => void;
 }
 
-// Hydrate sync state from localStorage
+// Sync hydration from localStorage
 const storedAccess = localStorage.getItem('accessToken');
 const storedUserRaw = localStorage.getItem('user');
 const storedUser: User | null = storedUserRaw ? (JSON.parse(storedUserRaw) as User) : null;
 
-// Detect if we'll be restoring a key so we can set keyRestoring: true from the start
 const sessionB64 = sessionStorage.getItem(SESSION_KEY);
 const willRestoreKey = !!(sessionB64 && storedUser);
 
@@ -81,22 +79,22 @@ export const useAuthStore = create<AuthState>()((set) => ({
   },
 
   setCachedPrivateKey(key) {
-    exportPrivateKeyToSession(key).then((b64) => {
-      sessionStorage.setItem(SESSION_KEY, b64);
-    });
+    // Persist raw bytes as base64 in sessionStorage (survives refresh, cleared on tab close)
+    sessionStorage.setItem(SESSION_KEY, exportPrivateKeyToSession(key));
     set({ cachedPrivateKey: key, keyRestoring: false });
   },
 }));
 
 // ─── Async session restore ────────────────────────────────────────────────────
+// importPrivateKeyFromSession is synchronous (just base64 decode), but keep async
+// pattern in case we add validation later.
 
 if (willRestoreKey) {
-  importPrivateKeyFromSession(sessionB64!)
-    .then((key) => {
-      useAuthStore.setState({ cachedPrivateKey: key, keyRestoring: false });
-    })
-    .catch(() => {
-      sessionStorage.removeItem(SESSION_KEY);
-      useAuthStore.setState({ keyRestoring: false });
-    });
+  try {
+    const key = importPrivateKeyFromSession(sessionB64!);
+    useAuthStore.setState({ cachedPrivateKey: key, keyRestoring: false });
+  } catch {
+    sessionStorage.removeItem(SESSION_KEY);
+    useAuthStore.setState({ keyRestoring: false });
+  }
 }

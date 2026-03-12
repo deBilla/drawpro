@@ -24,53 +24,59 @@ async function checkAccess(workspaceId: string, userId: string) {
 }
 
 /**
- * Encrypt `plaintext` using ECIES:
- *   - ephemeral X25519 key pair (server-generated, discarded after use)
- *   - ECDH(ephemeral_private, user_public) → shared secret
- *   - HKDF-SHA512(shared_secret) → AES-256-GCM key
- *   - AES-256-GCM encrypt → {ciphertext, iv, authTag, ephemeralPublicKey}
+ * Encrypt `plaintext` using ECIES (okara-crypto compatible):
+ *   - ephemeral X25519 key pair (webcrypto, raw 32-byte export)
+ *   - ECDH → HKDF-SHA512('drawpro-e2ee-salt','drawpro-e2ee-key') → AES-256-GCM key
+ *   - AES-256-GCM with AAD='drawpro-e2ee-message', 16-byte IV
+ *   - Returns base64( eph_pub(32) | iv(16) | authTag(16) | ciphertext )
  */
-function encryptForUser(
-  plaintext: string,
-  userPublicKeyB64: string,
-): {
-  ciphertext: string;
-  iv: string;
-  authTag: string;
-  ephemeralPublicKey: string;
-} {
-  const userPublicKey = crypto.createPublicKey({
-    key: Buffer.from(userPublicKeyB64, 'base64'),
-    format: 'der',
-    type: 'spki',
-  });
+async function encryptForUser(plaintext: string, userPublicKeyB64: string): Promise<string> {
+  const { webcrypto } = crypto;
 
-  const ephemeral = crypto.generateKeyPairSync('x25519');
-
-  const sharedSecret = crypto.diffieHellman({
-    privateKey: ephemeral.privateKey,
-    publicKey: userPublicKey,
-  });
-
-  const aesKey = Buffer.from(
-    crypto.hkdfSync('sha512', sharedSecret, Buffer.alloc(0), 'drawpro-sheet-encryption', 32),
+  const ephemeralKeyPair = await webcrypto.subtle.generateKey(
+    { name: 'X25519' } as EcKeyGenParams,
+    true,
+    ['deriveBits'],
   );
 
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', aesKey, iv);
+  const userPublicKey = await webcrypto.subtle.importKey(
+    'raw',
+    Buffer.from(userPublicKeyB64, 'base64'),
+    { name: 'X25519' } as EcKeyImportParams,
+    false,
+    [],
+  );
+
+  const sharedSecretBits = await webcrypto.subtle.deriveBits(
+    { name: 'X25519', public: userPublicKey } as EcdhKeyDeriveParams,
+    ephemeralKeyPair.privateKey,
+    256,
+  );
+
+  const aesKeyBytes = Buffer.from(
+    crypto.hkdfSync(
+      'sha512',
+      Buffer.from(sharedSecretBits),
+      Buffer.from('drawpro-e2ee-salt', 'utf8'),
+      Buffer.from('drawpro-e2ee-key', 'utf8'),
+      32,
+    ),
+  );
+
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-gcm', aesKeyBytes, iv);
+  cipher.setAAD(Buffer.from('drawpro-e2ee-message', 'utf8'));
   const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const authTag = cipher.getAuthTag();
+  const authTag = cipher.getAuthTag(); // 16 bytes
 
-  const ephemeralPublicKeyDer = ephemeral.publicKey.export({ type: 'spki', format: 'der' });
+  const ephPubRaw = Buffer.from(
+    await webcrypto.subtle.exportKey('raw', ephemeralKeyPair.publicKey),
+  ); // 32 bytes
 
-  aesKey.fill(0);
+  aesKeyBytes.fill(0);
 
-  return {
-    ciphertext: ct.toString('base64'),
-    iv: iv.toString('base64'),
-    authTag: authTag.toString('base64'),
-    ephemeralPublicKey: Buffer.from(ephemeralPublicKeyDer).toString('base64'),
-  };
+  // Wire format: eph_pub(32) | iv(16) | authTag(16) | ciphertext
+  return Buffer.concat([ephPubRaw, iv, authTag, ct]).toString('base64');
 }
 
 // GET /workspaces/:workspaceId/sheets
@@ -88,14 +94,15 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
         version: true,
         createdAt: true,
         updatedAt: true,
-        ciphertext: true, // used only to compute isEncrypted — not sent to client
+        encryptedData: true,
       },
     });
 
     return res.json({
-      data: sheets.map(({ ciphertext, ...s }) => ({
+      data: sheets.map(({ encryptedData, ...s }) => ({
         ...s,
-        isEncrypted: ciphertext !== null,
+        isEncrypted: encryptedData !== null,
+        encryptedData,
       })),
     });
   } catch (err) {
@@ -133,7 +140,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res) => {
     });
     if (!sheet) return res.status(404).json({ error: 'Sheet not found' });
 
-    return res.json({ data: { ...sheet, isEncrypted: sheet.ciphertext !== null } });
+    return res.json({ data: { ...sheet, isEncrypted: sheet.encryptedData !== null } });
   } catch (err) {
     console.error('[sheets/get]', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -166,29 +173,25 @@ router.put('/:id', requireAuth, validate(updateSchema), async (req: AuthRequest,
     const hasContent = hasElements || hasAppState;
     const hasEncryptionKeys = !!user?.publicKey;
 
-    let encryptedFields: {
-      ciphertext: string;
-      iv: string;
-      authTag: string;
-      ephemeralPublicKey: string;
+    let encryptedUpdate: {
+      encryptedData: string;
       name: string;
       elements: null;
       appState: null;
     } | null = null;
 
     if (hasEncryptionKeys && (hasContent || hasName)) {
-      // Always encrypt name + elements + appState together so no field leaks individually.
-      // Merge incoming values with stored values (plaintext or previously set during creation).
+      // Merge incoming values with stored values
       const name = hasName ? req.body.name : (sheet.name === '[encrypted]' ? '' : sheet.name);
       const elements = hasElements ? req.body.elements : (sheet.elements ?? []);
       const appState = hasAppState ? req.body.appState : (sheet.appState ?? {});
 
       const plaintext = JSON.stringify({ name, elements, appState });
-      const encrypted = encryptForUser(plaintext, user!.publicKey!);
+      const encryptedData = await encryptForUser(plaintext, user!.publicKey!);
 
-      encryptedFields = {
-        ...encrypted,
-        name: '[encrypted]', // sentinel stored in DB — real name is inside ciphertext
+      encryptedUpdate = {
+        encryptedData,
+        name: '[encrypted]',
         elements: null,
         appState: null,
       };
@@ -197,17 +200,15 @@ router.put('/:id', requireAuth, validate(updateSchema), async (req: AuthRequest,
     const updated = await prisma.sheet.update({
       where: { id: req.params.id },
       data: {
-        // Encrypted path: name/elements/appState all go into ciphertext
-        ...(encryptedFields !== null && encryptedFields),
-        // Plaintext path: store fields directly
-        ...(encryptedFields === null && hasName && { name: req.body.name }),
-        ...(encryptedFields === null && hasElements && { elements: req.body.elements }),
-        ...(encryptedFields === null && hasAppState && { appState: req.body.appState }),
+        ...(encryptedUpdate !== null && encryptedUpdate),
+        ...(encryptedUpdate === null && hasName && { name: req.body.name }),
+        ...(encryptedUpdate === null && hasElements && { elements: req.body.elements }),
+        ...(encryptedUpdate === null && hasAppState && { appState: req.body.appState }),
         version: { increment: 1 },
       },
     });
 
-    return res.json({ data: { ...updated, isEncrypted: updated.ciphertext !== null } });
+    return res.json({ data: { ...updated, isEncrypted: updated.encryptedData !== null } });
   } catch (err) {
     console.error('[sheets/update]', err);
     return res.status(500).json({ error: 'Internal server error' });

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Workspace, SheetSummary } from '@drawpro/shared-types';
 import { workspacesApi, sheetsApi } from '../lib/api';
-import { encryptWithPublicKey, decryptWithPrivateKey, decryptSheet } from '../lib/crypto';
+import { encryptMessage, decryptMessage, decryptSheet } from '../lib/crypto';
 import { useAuthStore } from './useAuthStore';
 
 interface WorkspaceState {
@@ -21,18 +21,18 @@ interface WorkspaceState {
   createSheet: (workspaceId: string, name: string) => Promise<SheetSummary>;
   deleteSheet: (workspaceId: string, sheetId: string) => Promise<void>;
   /** Decrypt all workspace names using the cached private key. */
-  decryptWorkspaceNames: (privateKey: CryptoKey) => Promise<void>;
+  decryptWorkspaceNames: (privateKey: Uint8Array) => Promise<void>;
   /** Decrypt all sheet names in the active workspace. */
-  decryptSheetNames: (privateKey: CryptoKey) => Promise<void>;
+  decryptSheetNames: (privateKey: Uint8Array) => Promise<void>;
 }
 
 async function tryDecryptWorkspaceName(
   encryptedName: string | null | undefined,
-  privateKey: CryptoKey,
+  privateKey: Uint8Array,
 ): Promise<string | null> {
   if (!encryptedName) return null;
   try {
-    return await decryptWithPrivateKey(encryptedName, privateKey);
+    return await decryptMessage(encryptedName, privateKey);
   } catch {
     return null;
   }
@@ -40,17 +40,11 @@ async function tryDecryptWorkspaceName(
 
 async function tryDecryptSheetName(
   sheet: SheetSummary,
-  privateKey: CryptoKey,
+  privateKey: Uint8Array,
 ): Promise<string | null> {
-  if (!sheet.ciphertext || !sheet.iv || !sheet.authTag || !sheet.ephemeralPublicKey) return null;
+  if (!sheet.encryptedData) return null;
   try {
-    const payload = await decryptSheet(
-      sheet.ciphertext,
-      sheet.iv,
-      sheet.authTag,
-      sheet.ephemeralPublicKey,
-      privateKey,
-    );
+    const payload = await decryptSheet(sheet.encryptedData, privateKey);
     return payload.name;
   } catch {
     return null;
@@ -108,7 +102,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
     let body: Parameters<typeof workspacesApi.create>[0] = { name };
 
     if (user?.publicKey) {
-      const encryptedName = await encryptWithPublicKey(name, user.publicKey);
+      const encryptedName = await encryptMessage(name, user.publicKey);
       body = { name: '[encrypted]', encryptedName };
     }
 
@@ -140,10 +134,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       workspaceId: sheet.workspaceId,
       name: sheet.name,
       isEncrypted: sheet.isEncrypted ?? false,
-      ciphertext: sheet.ciphertext,
-      iv: sheet.iv,
-      authTag: sheet.authTag,
-      ephemeralPublicKey: sheet.ephemeralPublicKey,
+      encryptedData: sheet.encryptedData,
       version: sheet.version,
       createdAt: sheet.createdAt,
       updatedAt: sheet.updatedAt,

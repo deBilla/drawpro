@@ -31,7 +31,8 @@ const refreshSchema = z.object({
 const keysSchema = z.object({
   publicKey: z.string().min(1),
   encryptedPrivateKey: z.string().min(1),
-  recoveryEncryptedPrivateKey: z.string().min(1),
+  salt: z.string().min(1),
+  recoveryCodesData: z.string().min(1),
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -43,7 +44,8 @@ const USER_SELECT = {
   name: true,
   publicKey: true,
   encryptedPrivateKey: true,
-  recoveryEncryptedPrivateKey: true,
+  salt: true,
+  recoveryCodesData: true,
   createdAt: true,
 } as const;
 
@@ -189,39 +191,30 @@ router.get('/me', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// PUT /auth/keys — upload the user's X25519 public key + argon2id-wrapped private key
-// The server never sees the passcode; this just persists the encrypted blob.
+// PUT /auth/keys — upload X25519 public key + argon2id-wrapped private key + recovery codes
+// The server never sees the passcode; this just persists the encrypted blobs.
 router.put('/keys', requireAuth, validate(keysSchema), async (req: AuthRequest, res) => {
   try {
-    const { publicKey, encryptedPrivateKey, recoveryEncryptedPrivateKey } = req.body as {
+    const { publicKey, encryptedPrivateKey, salt, recoveryCodesData } = req.body as {
       publicKey: string;
       encryptedPrivateKey: string;
-      recoveryEncryptedPrivateKey: string;
+      salt: string;
+      recoveryCodesData: string;
     };
 
-    // Validate encryptedPrivateKey shape
+    // Validate recoveryCodesData is valid JSON array
     try {
-      const p = JSON.parse(encryptedPrivateKey) as Record<string, unknown>;
-      if (!p.ciphertext || !p.iv || !p.salt) {
-        return res.status(400).json({ error: 'encryptedPrivateKey must contain {ciphertext, iv, salt}' });
+      const codes = JSON.parse(recoveryCodesData) as unknown[];
+      if (!Array.isArray(codes) || codes.length === 0) {
+        return res.status(400).json({ error: 'recoveryCodesData must be a non-empty JSON array' });
       }
     } catch {
-      return res.status(400).json({ error: 'encryptedPrivateKey must be valid JSON' });
-    }
-
-    // Validate recoveryEncryptedPrivateKey shape
-    try {
-      const p = JSON.parse(recoveryEncryptedPrivateKey) as Record<string, unknown>;
-      if (!p.ciphertext || !p.iv) {
-        return res.status(400).json({ error: 'recoveryEncryptedPrivateKey must contain {ciphertext, iv}' });
-      }
-    } catch {
-      return res.status(400).json({ error: 'recoveryEncryptedPrivateKey must be valid JSON' });
+      return res.status(400).json({ error: 'recoveryCodesData must be valid JSON' });
     }
 
     const user = await prisma.user.update({
       where: { id: req.userId },
-      data: { publicKey, encryptedPrivateKey, recoveryEncryptedPrivateKey },
+      data: { publicKey, encryptedPrivateKey, salt, recoveryCodesData },
       select: USER_SELECT,
     });
 

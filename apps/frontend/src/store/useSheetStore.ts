@@ -1,22 +1,19 @@
 import { create } from 'zustand';
 import type { Sheet } from '@drawpro/shared-types';
 import { sheetsApi } from '../lib/api';
-import { decryptUserPrivateKey, decryptSheet } from '../lib/crypto';
+import { decryptPrivateKey, decryptSheet } from '../lib/crypto';
 import { useAuthStore } from './useAuthStore';
 
 /** Raw encrypted sheet as returned by the API (before client-side decryption). */
 export interface EncryptedSheetData {
   id: string;
   workspaceId: string;
-  /** '[encrypted]' sentinel from the DB — real name is inside the ciphertext */
+  /** '[encrypted]' sentinel — real name is inside encryptedData */
   name: string;
   version: number;
   createdAt: string;
   updatedAt: string;
-  ciphertext: string;
-  iv: string;
-  authTag: string;
-  ephemeralPublicKey: string;
+  encryptedData: string;
 }
 
 interface SheetState {
@@ -44,7 +41,6 @@ interface SheetState {
   clear: () => void;
 }
 
-/** Apply decrypted payload to a sheet record, replacing name/elements/appState. */
 function applyDecrypted(
   base: Omit<Sheet, 'elements' | 'appState'>,
   payload: { name: string; elements: unknown[]; appState: Record<string, unknown> },
@@ -63,10 +59,8 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     set({ error: null, encryptedSheet: null, currentSheet: null });
     try {
       const sheet = await sheetsApi.get(workspaceId, sheetId);
-      const isEncrypted =
-        !!sheet.ciphertext && !!sheet.iv && !!sheet.authTag && !!sheet.ephemeralPublicKey;
 
-      if (!isEncrypted) {
+      if (!sheet.encryptedData) {
         set({ currentSheet: sheet });
         return;
       }
@@ -74,14 +68,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
       const { cachedPrivateKey, user } = useAuthStore.getState();
 
       if (cachedPrivateKey) {
-        // Key already unlocked this session — decrypt immediately
-        const payload = await decryptSheet(
-          sheet.ciphertext!,
-          sheet.iv!,
-          sheet.authTag!,
-          sheet.ephemeralPublicKey!,
-          cachedPrivateKey,
-        );
+        const payload = await decryptSheet(sheet.encryptedData, cachedPrivateKey);
         set({ currentSheet: applyDecrypted(sheet, payload) });
         return;
       }
@@ -91,7 +78,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
         return;
       }
 
-      // No cached key — show PasscodeModal
+      // No cached key — PasscodeModal will handle unlock via GlobalUnlockModal
       set({
         encryptedSheet: {
           id: sheet.id,
@@ -100,10 +87,7 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
           version: sheet.version,
           createdAt: sheet.createdAt,
           updatedAt: sheet.updatedAt,
-          ciphertext: sheet.ciphertext!,
-          iv: sheet.iv!,
-          authTag: sheet.authTag!,
-          ephemeralPublicKey: sheet.ephemeralPublicKey!,
+          encryptedData: sheet.encryptedData,
         },
       });
     } catch (err: unknown) {
@@ -116,29 +100,22 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     if (!encryptedSheet) return;
 
     const { user } = useAuthStore.getState();
-    if (!user?.encryptedPrivateKey) {
+    if (!user?.encryptedPrivateKey || !user.salt) {
       throw new Error('No encrypted private key found for this user.');
     }
 
-    // Throws DOMException (OperationError) on wrong passcode
-    const privateKey = await decryptUserPrivateKey(user.encryptedPrivateKey, passcode);
+    // Throws if wrong passcode
+    const privateKeyBytes = await decryptPrivateKey(user.encryptedPrivateKey, passcode, user.salt);
+    const payload = await decryptSheet(encryptedSheet.encryptedData, privateKeyBytes);
 
-    const payload = await decryptSheet(
-      encryptedSheet.ciphertext,
-      encryptedSheet.iv,
-      encryptedSheet.authTag,
-      encryptedSheet.ephemeralPublicKey,
-      privateKey,
-    );
-
-    useAuthStore.getState().setCachedPrivateKey(privateKey);
+    useAuthStore.getState().setCachedPrivateKey(privateKeyBytes);
 
     set({
       encryptedSheet: null,
       currentSheet: {
         id: encryptedSheet.id,
         workspaceId: encryptedSheet.workspaceId,
-        name: payload.name,         // real name from inside the ciphertext
+        name: payload.name,
         elements: payload.elements,
         appState: payload.appState,
         version: encryptedSheet.version,
@@ -152,12 +129,10 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
     set({ saving: true, error: null });
     try {
       const updated = await sheetsApi.update(workspaceId, sheetId, { name, elements, appState });
-      const isEncrypted =
-        !!updated.ciphertext && !!updated.iv && !!updated.authTag && !!updated.ephemeralPublicKey;
 
       set({
-        currentSheet: isEncrypted
-          ? { ...updated, name, elements, appState } // preserve decrypted data + real name in memory
+        currentSheet: updated.encryptedData
+          ? { ...updated, name, elements, appState } // keep decrypted values in memory
           : updated,
         saving: false,
         lastSaved: new Date(),
