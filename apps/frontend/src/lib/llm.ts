@@ -92,6 +92,49 @@ export function buildUserContent(
   return parts.join('\n\n');
 }
 
+// ─── Ollama extension ID — update this after loading the extension ───────────
+// Users can also set this in localStorage as 'drawpro_ollama_ext_id'
+const OLLAMA_EXTENSION_ID = localStorage.getItem('drawpro_ollama_ext_id') || '';
+
+/** Send a request to Ollama via the DrawPro Ollama Bridge extension */
+function sendViaExtension(
+  extensionId: string,
+  url: string,
+  body: unknown,
+): Promise<{ data?: unknown; error?: string }> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(extensionId, {
+        type: 'DRAWPRO_OLLAMA_REQUEST',
+        url,
+        body,
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ error: chrome.runtime.lastError.message });
+        } else {
+          resolve(response ?? { error: 'No response from extension' });
+        }
+      });
+    } catch {
+      resolve({ error: 'Extension not available' });
+    }
+  });
+}
+
+/** Try to detect the extension by sending a ping */
+async function detectExtension(extensionId: string): Promise<boolean> {
+  if (!extensionId) return false;
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(extensionId, { type: 'DRAWPRO_OLLAMA_PING' }, (response) => {
+        resolve(!chrome.runtime.lastError && response?.installed === true);
+      });
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 // ─── Ollama ──────────────────────────────────────────────────────────────────
 
 async function callOllama(
@@ -123,12 +166,30 @@ async function callOllama(
     messages.push({ role: 'user', content: userContent });
   }
 
+  const url = `${config.endpoint}/api/chat`;
+  const body = { model: config.model, messages, stream: false };
+
+  // Try extension first if ID is configured
+  const extId = localStorage.getItem('drawpro_ollama_ext_id') || OLLAMA_EXTENSION_ID;
+  if (extId) {
+    const hasExtension = await detectExtension(extId);
+    if (hasExtension) {
+      const result = await sendViaExtension(extId, url, body);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      const data = result.data as { message?: { content?: string } };
+      return data?.message?.content ?? 'No response from model.';
+    }
+  }
+
+  // Fallback: direct fetch (works on localhost or if OLLAMA_ORIGINS is set)
   let res: Response;
   try {
-    res = await fetch(`${config.endpoint}/api/chat`, {
+    res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: config.model, messages, stream: false }),
+      body: JSON.stringify(body),
     });
   } catch {
     throw new OllamaCorsError();

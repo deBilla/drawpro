@@ -1,18 +1,12 @@
 {
   "manifest_version": 3,
   "name": "DrawPro Ollama Bridge",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Enables DrawPro to connect to your local Ollama instance for AI feedback.",
-  "permissions": ["declarativeNetRequest", "declarativeNetRequestWithHostAccess"],
+  "permissions": [],
   "host_permissions": ["http://localhost:11434/*", "http://127.0.0.1:11434/*"],
-  "declarative_net_request": {
-    "rule_resources": [
-      {
-        "id": "ollama_cors",
-        "enabled": true,
-        "path": "rules.json"
-      }
-    ]
+  "externally_connectable": {
+    "matches": ["https://drawpro.kithly.app/*", "http://localhost:*/*"]
   },
   "icons": {
     "48": "icon48.png",

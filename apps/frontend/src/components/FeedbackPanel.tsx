@@ -326,10 +326,20 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
               Ollama Bridge Extension Required
             </div>
             <p style={{ fontSize: 12, margin: '0 0 10px', lineHeight: 1.5, opacity: 0.8 }}>
-              To connect to your local Ollama from this site, install the DrawPro Ollama Bridge extension:
-              download the zip, unzip it, then go to chrome://extensions, enable Developer Mode,
-              click "Load unpacked" and select the unzipped folder.
+              1. Download and unzip the extension<br />
+              2. Go to chrome://extensions, enable Developer Mode<br />
+              3. Click "Load unpacked" and select the folder<br />
+              4. Copy the extension ID and paste it below
             </p>
+            <input
+              style={{ ...styles.input, marginBottom: 8, fontSize: 12 }}
+              type="text"
+              placeholder="Paste extension ID from chrome://extensions"
+              defaultValue={localStorage.getItem('drawpro_ollama_ext_id') || ''}
+              onChange={(e) => {
+                localStorage.setItem('drawpro_ollama_ext_id', e.target.value.trim());
+              }}
+            />
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
               <a
                 href="https://github.com/deBilla/drawpro/raw/main/extensions/ollama-cors.zip"
