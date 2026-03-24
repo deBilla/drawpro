@@ -113,9 +113,15 @@ async function callOllama(
     messages.push({ role: 'user', content: userContent });
   }
 
-  const res = await fetch(`${config.endpoint}/api/chat`, {
+  // Route through API proxy to avoid CORS issues with local Ollama
+  const apiBase = import.meta.env.VITE_API_URL ?? '/api';
+  const res = await fetch(`${apiBase}/ollama/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Ollama-Url': config.endpoint,
+    },
+    credentials: 'include',
     body: JSON.stringify({ model: config.model, messages, stream: false }),
   });
 
