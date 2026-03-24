@@ -4,15 +4,18 @@
     "priority": 1,
     "action": {
       "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "Origin", "operation": "set", "value": "http://localhost:11434" }
+      ],
       "responseHeaders": [
         { "header": "Access-Control-Allow-Origin", "operation": "set", "value": "*" },
-        { "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, OPTIONS" },
-        { "header": "Access-Control-Allow-Headers", "operation": "set", "value": "Content-Type" },
+        { "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "header": "Access-Control-Allow-Headers", "operation": "set", "value": "Content-Type, Authorization" },
         { "header": "Access-Control-Allow-Private-Network", "operation": "set", "value": "true" }
       ]
     },
     "condition": {
-      "urlFilter": "localhost:11434",
+      "urlFilter": "||localhost:11434",
       "resourceTypes": ["xmlhttprequest", "other"]
     }
   },
@@ -21,15 +24,18 @@
     "priority": 1,
     "action": {
       "type": "modifyHeaders",
+      "requestHeaders": [
+        { "header": "Origin", "operation": "set", "value": "http://127.0.0.1:11434" }
+      ],
       "responseHeaders": [
         { "header": "Access-Control-Allow-Origin", "operation": "set", "value": "*" },
-        { "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, OPTIONS" },
-        { "header": "Access-Control-Allow-Headers", "operation": "set", "value": "Content-Type" },
+        { "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, PUT, DELETE, OPTIONS" },
+        { "header": "Access-Control-Allow-Headers", "operation": "set", "value": "Content-Type, Authorization" },
         { "header": "Access-Control-Allow-Private-Network", "operation": "set", "value": "true" }
       ]
     },
     "condition": {
-      "urlFilter": "127.0.0.1:11434",
+      "urlFilter": "||127.0.0.1:11434",
       "resourceTypes": ["xmlhttprequest", "other"]
     }
   }
