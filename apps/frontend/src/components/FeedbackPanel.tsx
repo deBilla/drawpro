@@ -105,6 +105,7 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
 
     setLoading(true);
     setError(null);
+    setShowExtensionPrompt(false);
 
     const isFirstMessage = messages.length === 0;
     const userMessage = prompt.trim() || (isFirstMessage ? 'Please review this design and provide feedback.' : '');
@@ -327,7 +328,7 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
               download the zip, unzip it, then go to chrome://extensions, enable Developer Mode,
               click "Load unpacked" and select the unzipped folder.
             </p>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
               <a
                 href="https://github.com/deBilla/drawpro/raw/main/extensions/ollama-cors.zip"
                 target="_blank"
@@ -336,6 +337,15 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
               >
                 Download Extension
               </a>
+              <button
+                style={styles.extensionBtn}
+                onClick={() => {
+                  setShowExtensionPrompt(false);
+                  handleSend();
+                }}
+              >
+                Retry
+              </button>
               <button
                 style={styles.extensionBtnAlt}
                 onClick={() => {
