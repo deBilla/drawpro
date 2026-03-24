@@ -156,6 +156,8 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
       if (err instanceof OllamaCorsError) {
         setShowExtensionPrompt(true);
         setError(null);
+        // Revert messages so retry works as a fresh attempt
+        setMessages(messages);
       } else {
         const message = err instanceof Error ? err.message : 'Failed to get feedback';
         setError(message);
