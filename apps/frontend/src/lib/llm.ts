@@ -3,6 +3,16 @@
  * API keys never leave the user's browser.
  */
 
+/** Thrown when Ollama is unreachable due to CORS — UI should prompt extension install */
+export class OllamaCorsError extends Error {
+  constructor() {
+    super(
+      'Cannot connect to Ollama. Install the "DrawPro Ollama Bridge" browser extension to enable the connection.',
+    );
+    this.name = 'OllamaCorsError';
+  }
+}
+
 export interface LLMConfig {
   provider: 'ollama' | 'openai' | 'anthropic' | 'custom';
   endpoint: string;
@@ -121,11 +131,7 @@ async function callOllama(
       body: JSON.stringify({ model: config.model, messages, stream: false }),
     });
   } catch {
-    throw new Error(
-      'Cannot reach Ollama. Make sure Ollama is running and has CORS enabled:\n\n' +
-      'Run: OLLAMA_ORIGINS="*" ollama serve\n\n' +
-      'Or on macOS: launchctl setenv OLLAMA_ORIGINS "*" then restart Ollama.',
-    );
+    throw new OllamaCorsError();
   }
 
   if (!res.ok) {

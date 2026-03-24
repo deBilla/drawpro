@@ -6,6 +6,7 @@ import {
   isConfigured,
   callLLM,
   buildUserContent,
+  OllamaCorsError,
   type LLMConfig,
   type ChatMessage,
 } from '../lib/llm';
@@ -42,6 +43,7 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showExtensionPrompt, setShowExtensionPrompt] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [sendScreenshot, setSendScreenshot] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
@@ -150,8 +152,13 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
         { role: 'assistant', content: reply },
       ]);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to get feedback';
-      setError(message);
+      if (err instanceof OllamaCorsError) {
+        setShowExtensionPrompt(true);
+        setError(null);
+      } else {
+        const message = err instanceof Error ? err.message : 'Failed to get feedback';
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -309,6 +316,37 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
         )}
 
         {error && <div style={styles.errorMsg}>{error}</div>}
+
+        {showExtensionPrompt && (
+          <div style={styles.extensionPrompt}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>
+              Ollama Bridge Extension Required
+            </div>
+            <p style={{ fontSize: 12, margin: '0 0 10px', lineHeight: 1.5, opacity: 0.8 }}>
+              To connect to your local Ollama from this site, install the DrawPro Ollama Bridge extension.
+              It allows your browser to securely reach Ollama on your machine.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <a
+                href="https://github.com/deBilla/drawpro/tree/main/extensions/ollama-cors"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={styles.extensionBtn}
+              >
+                Install Extension
+              </a>
+              <button
+                style={styles.extensionBtnAlt}
+                onClick={() => {
+                  setShowExtensionPrompt(false);
+                  setShowSettings(true);
+                }}
+              >
+                Use OpenAI / Anthropic instead
+              </button>
+            </div>
+          </div>
+        )}
 
         <div ref={messagesEndRef} />
       </div>
@@ -543,5 +581,33 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  extensionPrompt: {
+    background: '#1e1b4b',
+    border: '1px solid #4338ca',
+    borderRadius: 10,
+    padding: '14px',
+    color: '#c7d2fe',
+  },
+  extensionBtn: {
+    display: 'inline-block',
+    padding: '6px 14px',
+    background: '#7c3aed',
+    color: '#fff',
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 600,
+    textDecoration: 'none',
+    cursor: 'pointer',
+    border: 'none',
+  },
+  extensionBtnAlt: {
+    padding: '6px 14px',
+    background: 'transparent',
+    color: '#94a3b8',
+    borderRadius: 6,
+    fontSize: 12,
+    border: '1px solid #334155',
+    cursor: 'pointer',
   },
 };
