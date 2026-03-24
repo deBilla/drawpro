@@ -1,21 +1,4 @@
 services:
-  postgres:
-    image: postgres:15-alpine
-    restart: unless-stopped
-    ports:
-      - '5432:5432'
-    environment:
-      POSTGRES_USER: drawpro
-      POSTGRES_PASSWORD: drawpro
-      POSTGRES_DB: drawpro
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U drawpro']
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -44,15 +27,12 @@ services:
     restart: unless-stopped
     env_file: ../apps/api/.env
     environment:
-      # Point to the postgres container in the Docker network
-      DATABASE_URL: postgresql://drawpro:drawpro@postgres:5432/drawpro
+      # DATABASE_URL comes from apps/api/.env (external Postgres/Supabase)
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio
       FRONTEND_URL: http://localhost:3010
     depends_on:
       redis:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
 
   collab:
@@ -80,6 +60,5 @@ services:
       - collab
 
 volumes:
-  postgres_data:
   redis_data:
   minio_data:
