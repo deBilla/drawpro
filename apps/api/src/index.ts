@@ -27,23 +27,6 @@ app.use('/auth', authRouter);
 app.use('/workspaces', workspacesRouter);
 app.use('/workspaces/:workspaceId/sheets', sheetsRouter);
 
-// ─── Ollama proxy (avoids CORS for browser → local Ollama) ──────────────────
-app.post('/ollama/api/chat', async (req, res) => {
-  const ollamaUrl = (req.headers['x-ollama-url'] as string) || 'http://localhost:11434';
-  try {
-    const upstream = await fetch(`${ollamaUrl}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body),
-    });
-    const data = await upstream.json();
-    res.status(upstream.status).json(data);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    res.status(502).json({ error: `Ollama unreachable: ${message}` });
-  }
-});
-
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });

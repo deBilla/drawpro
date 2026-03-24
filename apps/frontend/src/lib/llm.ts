@@ -113,17 +113,20 @@ async function callOllama(
     messages.push({ role: 'user', content: userContent });
   }
 
-  // Route through API proxy to avoid CORS issues with local Ollama
-  const apiBase = import.meta.env.VITE_API_URL ?? '/api';
-  const res = await fetch(`${apiBase}/ollama/api/chat`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Ollama-Url': config.endpoint,
-    },
-    credentials: 'include',
-    body: JSON.stringify({ model: config.model, messages, stream: false }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${config.endpoint}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: config.model, messages, stream: false }),
+    });
+  } catch {
+    throw new Error(
+      'Cannot reach Ollama. Make sure Ollama is running and has CORS enabled:\n\n' +
+      'Run: OLLAMA_ORIGINS="*" ollama serve\n\n' +
+      'Or on macOS: launchctl setenv OLLAMA_ORIGINS "*" then restart Ollama.',
+    );
+  }
 
   if (!res.ok) {
     const text = await res.text();
