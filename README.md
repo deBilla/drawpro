@@ -360,6 +360,34 @@ Nginx listens on port 80 and routes:
 
 ---
 
+## AI Feedback
+
+DrawPro includes a built-in **AI Feedback** panel that lets you get intelligent reviews of your whiteboard content directly from the editor.
+
+### How it works
+
+1. Open any sheet and click the **AI Feedback** button in the toolbar
+2. Configure your AI provider via the gear icon (settings are saved in your browser)
+3. Send your canvas for review — the AI checks factual correctness and relationships
+4. Ask follow-up questions in the same chat thread
+
+### Supported providers
+
+| Provider | Endpoint | API Key required |
+|----------|----------|-----------------|
+| **Ollama** (default) | `http://localhost:11434` | No |
+| **OpenAI** | `https://api.openai.com` | Yes |
+| **Anthropic** | `https://api.anthropic.com` | Yes |
+| **Custom** (OpenAI-compatible) | User-provided | Optional |
+
+### Privacy
+
+- All LLM calls are made **directly from your browser** — your API keys and canvas data never pass through the DrawPro server
+- Settings and keys are stored in `localStorage` only
+- The server has zero knowledge of your AI configuration
+
+---
+
 ## Next Steps
 
 - [ ] Supabase or email-based magic link auth
@@ -368,4 +396,4 @@ Nginx listens on port 80 and routes:
 - [ ] Sheet export to PNG/SVG via MinIO
 - [ ] Cursor presence (awareness state already wired in collab server)
 - [ ] Row-level security policies if migrating to Supabase
-# drawpro
+- [ ] E2EE for Yjs real-time collab wire protocol

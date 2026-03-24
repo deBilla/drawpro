@@ -9,7 +9,6 @@ import { redis } from './lib/redis';
 import authRouter from './routes/auth';
 import workspacesRouter from './routes/workspaces';
 import sheetsRouter from './routes/sheets';
-
 const app = express();
 
 app.use(helmet());
@@ -26,7 +25,6 @@ app.get('/health', (_req, res) => {
 app.use('/auth', authRouter);
 app.use('/workspaces', workspacesRouter);
 app.use('/workspaces/:workspaceId/sheets', sheetsRouter);
-
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });

@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles } from 'lucide-react';
 import { useSheetStore } from '../store/useSheetStore';
 import Canvas, { type CanvasHandle } from '../components/Canvas';
 import PasscodeModal from '../components/PasscodeModal';
+import FeedbackPanel from '../components/FeedbackPanel';
 
 export default function Editor() {
   const { workspaceId, sheetId } = useParams<{
@@ -12,6 +13,7 @@ export default function Editor() {
   }>();
   const navigate = useNavigate();
   const canvasRef = useRef<CanvasHandle>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const {
     currentSheet,
     encryptedSheet,
@@ -36,6 +38,16 @@ export default function Editor() {
     await saveSheet(workspaceId!, sheetId!, currentSheet.name, elements, appState);
   }
 
+  const getElements = useCallback(
+    () => canvasRef.current?.getSaveData().elements ?? [],
+    [],
+  );
+
+  const getScreenshot = useCallback(
+    () => canvasRef.current?.exportScreenshot() ?? Promise.resolve(null),
+    [],
+  );
+
   const sheetName = currentSheet?.name ?? encryptedSheet?.name ?? 'Loading…';
 
   return (
@@ -54,10 +66,20 @@ export default function Editor() {
           <button style={styles.saveBtn} onClick={handleSave} disabled={saving || !!encryptedSheet}>
             <Save size={14} /> Save
           </button>
+          <button
+            style={{
+              ...styles.saveBtn,
+              background: feedbackOpen ? '#6d28d9' : '#7c3aed',
+            }}
+            onClick={() => setFeedbackOpen((o) => !o)}
+            disabled={!!encryptedSheet}
+          >
+            <Sparkles size={14} /> AI Feedback
+          </button>
         </div>
       </header>
 
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', position: 'relative' }}>
         {currentSheet ? (
           <Canvas
             ref={canvasRef}
@@ -67,6 +89,13 @@ export default function Editor() {
         ) : !encryptedSheet ? (
           <div style={styles.loading}>Loading sheet…</div>
         ) : null}
+
+        <FeedbackPanel
+          open={feedbackOpen}
+          onClose={() => setFeedbackOpen(false)}
+          getElements={getElements}
+          getScreenshot={getScreenshot}
+        />
       </div>
 
       {/* Passcode modal — rendered on top of everything when decryption is pending */}

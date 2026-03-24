@@ -1,9 +1,11 @@
 import { useRef, forwardRef, useImperativeHandle } from 'react';
-import { Excalidraw } from '@excalidraw/excalidraw';
+import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 
 export interface CanvasHandle {
   getSaveData: () => { elements: unknown[]; appState: Record<string, unknown> };
+  /** Export canvas as a base64 PNG string */
+  exportScreenshot: () => Promise<string | null>;
 }
 
 interface CanvasProps {
@@ -23,6 +25,24 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       elements: (apiRef.current?.getSceneElements() ?? []) as unknown[],
       appState: (apiRef.current?.getAppState() ?? {}) as Record<string, unknown>,
     }),
+    exportScreenshot: async () => {
+      const api = apiRef.current;
+      if (!api) return null;
+      try {
+        const blob = await exportToBlob({
+          elements: api.getSceneElements(),
+          appState: { ...api.getAppState(), exportWithDarkMode: false },
+          files: api.getFiles(),
+        });
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        return null;
+      }
+    },
   }));
 
   return (
