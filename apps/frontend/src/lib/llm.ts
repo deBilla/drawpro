@@ -92,9 +92,15 @@ export function buildUserContent(
   return parts.join('\n\n');
 }
 
-// ─── Ollama extension ID — update this after loading the extension ───────────
-// Users can also set this in localStorage as 'drawpro_ollama_ext_id'
-const OLLAMA_EXTENSION_ID = localStorage.getItem('drawpro_ollama_ext_id') || '';
+// ─── Chrome extension messaging (type-safe wrappers) ────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const chromeRuntime = (globalThis as any).chrome?.runtime as
+  | {
+      sendMessage: (id: string, msg: unknown, cb: (resp: any) => void) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
+      lastError?: { message?: string };
+    }
+  | undefined;
 
 /** Send a request to Ollama via the DrawPro Ollama Bridge extension */
 function sendViaExtension(
@@ -104,13 +110,14 @@ function sendViaExtension(
 ): Promise<{ data?: unknown; error?: string }> {
   return new Promise((resolve) => {
     try {
-      chrome.runtime.sendMessage(extensionId, {
+      if (!chromeRuntime) { resolve({ error: 'Extension not available' }); return; }
+      chromeRuntime.sendMessage(extensionId, {
         type: 'DRAWPRO_OLLAMA_REQUEST',
         url,
         body,
       }, (response) => {
-        if (chrome.runtime.lastError) {
-          resolve({ error: chrome.runtime.lastError.message });
+        if (chromeRuntime.lastError) {
+          resolve({ error: chromeRuntime.lastError.message });
         } else {
           resolve(response ?? { error: 'No response from extension' });
         }
@@ -123,11 +130,11 @@ function sendViaExtension(
 
 /** Try to detect the extension by sending a ping */
 async function detectExtension(extensionId: string): Promise<boolean> {
-  if (!extensionId) return false;
+  if (!extensionId || !chromeRuntime) return false;
   return new Promise((resolve) => {
     try {
-      chrome.runtime.sendMessage(extensionId, { type: 'DRAWPRO_OLLAMA_PING' }, (response) => {
-        resolve(!chrome.runtime.lastError && response?.installed === true);
+      chromeRuntime.sendMessage(extensionId, { type: 'DRAWPRO_OLLAMA_PING' }, (response) => {
+        resolve(!chromeRuntime.lastError && response?.installed === true);
       });
     } catch {
       resolve(false);
@@ -170,7 +177,7 @@ async function callOllama(
   const body = { model: config.model, messages, stream: false };
 
   // Try extension first if ID is configured
-  const extId = localStorage.getItem('drawpro_ollama_ext_id') || OLLAMA_EXTENSION_ID;
+  const extId = localStorage.getItem('drawpro_ollama_ext_id') || '';
   if (extId) {
     const hasExtension = await detectExtension(extId);
     if (hasExtension) {
