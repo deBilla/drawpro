@@ -1,2 +1,5 @@
-dist-electron/**
+dist-electron/
+release/
+node_modules/
 test-import.js
+*.dmg

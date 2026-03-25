@@ -2,6 +2,8 @@
   "name": "@drawpro/desktop",
   "version": "0.0.1",
   "private": true,
+  "description": "DrawPro desktop app — Excalidraw with AI feedback via local Ollama",
+  "author": "DrawPro",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "npm run electron:dev",
@@ -11,32 +13,30 @@
     "build:win": "tsc -p tsconfig.json && electron-builder --win",
     "build:linux": "tsc -p tsconfig.json && electron-builder --linux"
   },
-  "dependencies": {},
+  "dependencies": {
+    "app-builder-bin": "^4.2.0"
+  },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0",
     "concurrently": "^9.0.0",
+    "electron": "33.4.11",
+    "electron-builder": "^25.0.0",
+    "fast-xml-builder": "^1.1.4",
     "typescript": "^5.5.0"
   },
   "build": {
     "appId": "com.drawpro.desktop",
     "productName": "DrawPro",
     "files": [
-      "dist-electron/**/*",
-      "frontend-dist/**/*"
+      "dist-electron/**/*"
     ],
-    "extraResources": [],
     "mac": {
-      "target": "dmg",
-      "icon": "icons/icon.icns"
+      "target": "dmg"
     },
     "win": {
-      "target": "nsis",
-      "icon": "icons/icon.ico"
+      "target": "nsis"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "icons/icon.png"
+      "target": "AppImage"
     },
     "directories": {
       "output": "release"

@@ -24,6 +24,9 @@ function createWindow() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
+      // Allow preload script to inject into the remote deployed site
+      webSecurity: true,
+      sandbox: false,
     },
   });
 
