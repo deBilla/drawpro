@@ -176,7 +176,15 @@ async function callOllama(
   const url = `${config.endpoint}/api/chat`;
   const body = { model: config.model, messages, stream: false };
 
-  // Try extension first if ID is configured
+  // 1. Electron IPC — no CORS, no extension needed
+  if (window.electronAPI) {
+    const result = await window.electronAPI.ollamaFetch(url, body);
+    if (result.error) throw new Error(result.error);
+    const data = result.data as { message?: { content?: string } };
+    return data?.message?.content ?? 'No response from model.';
+  }
+
+  // 2. Try Chrome extension if ID is configured
   const extId = localStorage.getItem('drawpro_ollama_ext_id') || '';
   if (extId) {
     const hasExtension = await detectExtension(extId);
@@ -190,7 +198,7 @@ async function callOllama(
     }
   }
 
-  // Fallback: direct fetch (works on localhost or if OLLAMA_ORIGINS is set)
+  // 3. Direct fetch — works on localhost or if OLLAMA_ORIGINS is set
   let res: Response;
   try {
     res = await fetch(url, {

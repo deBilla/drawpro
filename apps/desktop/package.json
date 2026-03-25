@@ -1,0 +1,45 @@
+{
+  "name": "@drawpro/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "npm run electron:dev",
+    "electron:dev": "tsc -p tsconfig.json && ELECTRON_RUN_AS_NODE= electron .",
+    "build": "tsc -p tsconfig.json && electron-builder",
+    "build:mac": "tsc -p tsconfig.json && electron-builder --mac",
+    "build:win": "tsc -p tsconfig.json && electron-builder --win",
+    "build:linux": "tsc -p tsconfig.json && electron-builder --linux"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "concurrently": "^9.0.0",
+    "typescript": "^5.5.0"
+  },
+  "build": {
+    "appId": "com.drawpro.desktop",
+    "productName": "DrawPro",
+    "files": [
+      "dist-electron/**/*",
+      "frontend-dist/**/*"
+    ],
+    "extraResources": [],
+    "mac": {
+      "target": "dmg",
+      "icon": "icons/icon.icns"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "icons/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "icons/icon.png"
+    },
+    "directories": {
+      "output": "release"
+    }
+  }
+}

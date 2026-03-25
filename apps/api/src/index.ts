@@ -12,8 +12,8 @@ import sheetsRouter from './routes/sheets';
 const app = express();
 
 app.set('trust proxy', 1);
-app.use(helmet());
 app.use(cors({ origin: ENV.FRONTEND_URL, credentials: true }));
+app.use(helmet());
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 
