@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DrawPro — Encrypted Collaborative Whiteboard with AI Feedback</title>
+  <meta name="description" content="Real-time collaborative drawing with end-to-end encryption. Your designs never leave your device unencrypted. Built-in AI feedback powered by Ollama, OpenAI, or Anthropic.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Cpath d='M8 24L14 10l4 8 3-5 5 11' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --border: #334155;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --accent-glow: rgba(99, 102, 241, 0.15);
+      --green: #22c55e;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-hover); }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    /* ─── Nav ─── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 20px;
+      color: var(--text);
+    }
+    .logo svg { flex-shrink: 0; }
+    .nav-links { display: flex; gap: 24px; align-items: center; }
+    .nav-links a { color: var(--text-muted); font-size: 14px; font-weight: 500; }
+    .nav-links a:hover { color: var(--text); }
+
+    /* ─── Hero ─── */
+    .hero {
+      text-align: center;
+      padding: 80px 24px 60px;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent-glow);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 13px;
+      color: var(--accent-hover);
+      margin-bottom: 28px;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+    }
+    .hero h1 {
+      font-size: clamp(36px, 5vw, 56px);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 20px;
+      letter-spacing: -0.02em;
+    }
+    .hero h1 .highlight { color: var(--accent); }
+    .hero p {
+      font-size: 18px;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 28px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+    }
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--text-dim);
+      transform: translateY(-1px);
+      color: var(--text);
+    }
+
+    /* ─── Features ─── */
+    .features { padding: 60px 0 80px; }
+    .features-heading {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .features-heading h2 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .features-heading p {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 24px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .feature-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      width: 44px; height: 44px;
+      background: var(--accent-glow);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 20px;
+    }
+    .feature-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ─── How E2EE works ─── */
+    .e2ee {
+      padding: 60px 0;
+      border-top: 1px solid var(--border);
+    }
+    .e2ee-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: center;
+    }
+    .e2ee h2 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .e2ee p {
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      font-size: 15px;
+    }
+    .e2ee-diagram {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.8;
+    }
+    .e2ee-diagram .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .e2ee-diagram .step-num {
+      background: var(--accent);
+      color: #fff;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .e2ee-diagram .step-text { font-family: inherit; }
+    .e2ee-diagram code {
+      background: rgba(99, 102, 241, 0.15);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--accent-hover);
+      font-size: 12px;
+    }
+
+    /* ─── Download ─── */
+    .download {
+      padding: 60px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    .download h2 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .download > p {
+      color: var(--text-muted);
+      margin-bottom: 32px;
+      font-size: 15px;
+    }
+    .download-card {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 32px 48px;
+      gap: 16px;
+    }
+    .download-card .platform {
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+    .download-card .version {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 0;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+    footer a { color: var(--text-muted); }
+    footer .footer-links {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 768px) {
+      .hero { padding: 48px 16px 40px; }
+      .e2ee-content { grid-template-columns: 1fr; }
+      .nav-links { gap: 16px; }
+      .download-card { padding: 24px 32px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="logo">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="8" fill="#6366f1"/>
+        <path d="M8 24L14 10l4 8 3-5 5 11" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      DrawPro
+    </div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#security">Security</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/deBilla/drawpro" target="_blank">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Open Source &amp; End-to-End Encrypted
+    </div>
+    <h1>
+      Collaborative whiteboard<br>
+      with <span class="highlight">zero-knowledge</span> encryption
+    </h1>
+    <p>
+      Draw, diagram, and brainstorm together in real time. Your designs are encrypted on your device before they ever leave your browser. The server sees only ciphertext.
+    </p>
+    <div class="hero-actions">
+      <a href="https://drawpro.kithly.app" class="btn btn-primary" target="_blank">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        Open DrawPro
+      </a>
+      <a href="#download" class="btn btn-secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Desktop App
+      </a>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="features">
+    <div class="container">
+      <div class="features-heading">
+        <h2>Built for privacy-first teams</h2>
+        <p>Everything you need for collaborative design, without compromising on security.</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#128274;</div>
+          <h3>End-to-End Encryption</h3>
+          <p>X25519 ECDH + AES-256-GCM. Your drawings are encrypted before leaving the browser. The server holds only ciphertext.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#9997;&#65039;</div>
+          <h3>Excalidraw Canvas</h3>
+          <p>Full-featured infinite canvas powered by Excalidraw. Sketch diagrams, wireframes, flowcharts, and more.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128101;</div>
+          <h3>Real-Time Collaboration</h3>
+          <p>Work together with your team in real time via Yjs and WebSockets. See each other's cursors and changes instantly.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#129302;</div>
+          <h3>AI Feedback</h3>
+          <p>Get intelligent reviews of your designs. Supports Ollama (local), OpenAI, and Anthropic. API keys never leave your browser.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128187;</div>
+          <h3>Desktop App</h3>
+          <p>Electron wrapper for CORS-free local Ollama access. Code-signed and notarized for macOS.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#128275;</div>
+          <h3>Recovery Codes</h3>
+          <p>6 one-time recovery codes protect you from a forgotten passcode. Your private key is never stored in plaintext.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- E2EE Explainer -->
+  <section id="security" class="e2ee">
+    <div class="container">
+      <div class="e2ee-content">
+        <div>
+          <h2>How your data stays private</h2>
+          <p>
+            DrawPro uses an ECIES encryption scheme with X25519 key exchange and AES-256-GCM authenticated encryption. Every piece of content — drawings, names, metadata — is encrypted on your device.
+          </p>
+          <p>
+            Your private key is wrapped with a passcode you choose, derived via Argon2id (128 MB memory cost). Even if the database is stolen, your data is useless without the passcode.
+          </p>
+          <p>
+            The server performs encryption using only your <strong>public key</strong> and can never reverse the process. Decryption happens entirely in your browser.
+          </p>
+        </div>
+        <div class="e2ee-diagram">
+          <div class="step">
+            <span class="step-num">1</span>
+            <span class="step-text">You draw on the canvas</span>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <span class="step-text">Browser generates ephemeral <code>X25519</code> key pair</span>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <span class="step-text"><code>ECDH</code> shared secret derived from your public key</span>
+          </div>
+          <div class="step">
+            <span class="step-num">4</span>
+            <span class="step-text"><code>HKDF-SHA512</code> stretches secret into AES key</span>
+          </div>
+          <div class="step">
+            <span class="step-num">5</span>
+            <span class="step-text"><code>AES-256-GCM</code> encrypts your drawing</span>
+          </div>
+          <div class="step">
+            <span class="step-num">6</span>
+            <span class="step-text">Server stores only the ciphertext blob</span>
+          </div>
+          <div class="step">
+            <span class="step-num">7</span>
+            <span class="step-text">Only your browser can decrypt with your private key</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section id="download" class="download">
+    <div class="container">
+      <h2>Download the Desktop App</h2>
+      <p>CORS-free Ollama access. Code-signed and Apple-notarized.</p>
+      <div class="download-card">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8.36 8.36 0 00-1.33 4.59c0 2.13 1.07 4.01 2.71 5.15A8.19 8.19 0 0112 15.41a8.19 8.19 0 01-1.38-3.67c1.64-1.14 2.71-3.02 2.71-5.15A8.36 8.36 0 0012 2z"/><path d="M17.73 13.39c-.2-.07-.39-.13-.59-.18a6.54 6.54 0 00-.73-.12 5.35 5.35 0 00-1.77.16c-.24.06-.47.15-.69.26a4.42 4.42 0 00-1.95 1.83c-.42.73-.61 1.57-.61 2.46 0 .68.11 1.33.32 1.93.21.6.52 1.13.91 1.57.39.44.86.78 1.39 1.01.53.23 1.1.35 1.68.35.64 0 1.23-.14 1.73-.39"/></svg>
+        <span style="font-weight: 600; font-size: 16px;">macOS (Apple Silicon)</span>
+        <a href="https://github.com/deBilla/drawpro/releases/latest/download/DrawPro-0.0.1-arm64.dmg" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download DMG
+        </a>
+        <span class="version">v0.0.1 &middot; 128 MB &middot; Signed &amp; Notarized</span>
+        <span class="platform">
+          <a href="https://github.com/deBilla/drawpro/releases" style="font-size: 13px;">All releases</a>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://drawpro.kithly.app" target="_blank">Web App</a>
+        <a href="https://github.com/deBilla/drawpro" target="_blank">GitHub</a>
+        <a href="https://github.com/deBilla/drawpro/releases" target="_blank">Releases</a>
+      </div>
+      <p>DrawPro is open source. Your data, your keys, your privacy.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
