@@ -17,5 +17,6 @@ apps/desktop/icon.iconset/
 
 # Secrets / credentials
 *.p12
+*.cer
 *.provisionprofile
 *.mobileprovision
