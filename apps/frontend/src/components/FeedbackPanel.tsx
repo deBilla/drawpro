@@ -16,6 +16,7 @@ interface FeedbackPanelProps {
   onClose: () => void;
   getElements: () => unknown[];
   getScreenshot: () => Promise<string | null>;
+  hasSelection: () => boolean;
 }
 
 const PROVIDERS: { value: LLMConfig['provider']; label: string; needsKey: boolean }[] = [
@@ -39,7 +40,7 @@ const DEFAULT_MODELS: Record<string, string> = {
   custom: '',
 };
 
-export default function FeedbackPanel({ open, onClose, getElements, getScreenshot }: FeedbackPanelProps) {
+export default function FeedbackPanel({ open, onClose, getElements, getScreenshot, hasSelection }: FeedbackPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -383,7 +384,11 @@ export default function FeedbackPanel({ open, onClose, getElements, getScreensho
               checked={sendScreenshot}
               onChange={(e) => setSendScreenshot(e.target.checked)}
             />
-            <span style={{ fontSize: 12 }}>Include screenshot</span>
+            <span style={{ fontSize: 12 }}>
+              {hasSelection()
+                ? 'Send screenshot of selected elements only'
+                : 'Send screenshot of entire canvas'}
+            </span>
           </label>
         )}
 

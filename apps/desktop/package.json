@@ -21,6 +21,7 @@
     "electron": "33.4.11",
     "electron-builder": "^25.0.0",
     "fast-xml-builder": "^1.1.4",
+    "sharp": "^0.34.5",
     "typescript": "^5.5.0"
   },
   "build": {
@@ -29,13 +30,26 @@
     "files": [
       "dist-electron/**/*"
     ],
+    "icon": "icon.png",
     "mac": {
-      "target": "dmg"
+      "icon": "icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["arm64"] },
+        { "target": "zip", "arch": ["arm64"] }
+      ],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "notarize": true
     },
     "win": {
+      "icon": "icon.png",
       "target": "nsis"
     },
     "linux": {
+      "icon": "icon.png",
       "target": "AppImage"
     },
     "directories": {

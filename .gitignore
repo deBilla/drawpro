@@ -1,8 +1,21 @@
 node_modules/
 dist/
+dist-electron/
 .env
 *.env.local
 .turbo/
 .DS_Store
 *.log
 prisma/migrations/
+
+# Desktop app build artifacts
+apps/desktop/release/
+apps/desktop/dist-electron/
+apps/desktop/icon.iconset/
+*.dmg
+*.blockmap
+
+# Secrets / credentials
+*.p12
+*.provisionprofile
+*.mobileprovision

@@ -48,6 +48,11 @@ export default function Editor() {
     [],
   );
 
+  const hasSelection = useCallback(
+    () => canvasRef.current?.hasSelection() ?? false,
+    [],
+  );
+
   const sheetName = currentSheet?.name ?? encryptedSheet?.name ?? 'Loading…';
 
   return (
@@ -95,6 +100,7 @@ export default function Editor() {
           onClose={() => setFeedbackOpen(false)}
           getElements={getElements}
           getScreenshot={getScreenshot}
+          hasSelection={hasSelection}
         />
       </div>
 

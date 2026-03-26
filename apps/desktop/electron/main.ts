@@ -20,18 +20,19 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: 'DrawPro',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      // Allow preload script to inject into the remote deployed site
-      webSecurity: true,
       sandbox: false,
     },
   });
 
-  // Always load deployed site — Electron is just a thin shell + Ollama bridge
-  win.loadURL(PROD_URL);
+  // Load deployed site in production, local dev server in dev mode
+  const url = IS_DEV ? DEV_URL : PROD_URL;
+  win.loadURL(url);
 
   if (IS_DEV) {
     win.webContents.openDevTools();

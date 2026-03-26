@@ -222,7 +222,10 @@ drawPro/
 ├── apps/
 │   ├── api/        – Express REST API  (port 3001)
 │   ├── collab/     – Yjs WebSocket collab server  (port 3002)
+│   ├── desktop/    – Electron desktop app (CORS-free Ollama bridge)
 │   └── frontend/   – React + Vite + Excalidraw  (port 3000)
+├── extensions/
+│   └── ollama-cors/ – Chrome extension for Ollama CORS bypass
 ├── packages/
 │   └── shared-types/  – TypeScript types shared across apps
 └── infra/
@@ -380,11 +383,56 @@ DrawPro includes a built-in **AI Feedback** panel that lets you get intelligent 
 | **Anthropic** | `https://api.anthropic.com` | Yes |
 | **Custom** (OpenAI-compatible) | User-provided | Optional |
 
+### Selection-aware screenshots
+
+When sending your canvas to the AI, DrawPro uses Excalidraw's built-in export (no browser screenshot permissions needed):
+
+- **Nothing selected** → exports the entire canvas
+- **Elements selected** → exports only the selected elements
+
+This lets you focus the AI review on a specific part of your design.
+
 ### Privacy
 
 - All LLM calls are made **directly from your browser** — your API keys and canvas data never pass through the DrawPro server
 - Settings and keys are stored in `localStorage` only
 - The server has zero knowledge of your AI configuration
+
+---
+
+## Desktop App (Electron)
+
+DrawPro ships a lightweight Electron wrapper that loads the deployed web app and provides a **CORS-free bridge to local Ollama**.
+
+### Why?
+
+Browsers block requests from `drawpro.kithly.app` to `localhost:11434` (CORS policy). The Electron app bypasses this by routing Ollama requests through Node.js via IPC — no CORS restrictions apply.
+
+### Build
+
+```bash
+cd apps/desktop
+npm install
+npm run build:mac    # macOS DMG (arm64)
+npm run build:win    # Windows NSIS installer
+npm run build:linux  # Linux AppImage
+```
+
+### Development
+
+```bash
+npm run dev          # start frontend first (port 3000)
+cd apps/desktop
+npm run dev          # launches Electron loading localhost:3000
+```
+
+### How it works
+
+1. Electron loads the deployed site (`drawpro.kithly.app`)
+2. A preload script exposes `window.electronAPI.ollamaFetch()`
+3. The frontend detects Electron and routes Ollama requests through IPC
+4. The main process makes the HTTP request via Node.js (no CORS)
+5. OpenAI / Anthropic calls still go directly from the renderer (browser-direct)
 
 ---
 
