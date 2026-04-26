@@ -84,6 +84,15 @@ func (s *service) Login(ctx context.Context, req LoginRequest) (*Entity, *TokenP
 		return nil, nil, fmt.Errorf("auth.service.Login: %w", apperr.ErrUnauthorized)
 	}
 
+	hashPrefix := ""
+	if len(entity.PasswordHash) >= 7 {
+		hashPrefix = entity.PasswordHash[:7]
+	}
+	s.log.Info("login: comparing hash",
+		zap.Int("hash_len", len(entity.PasswordHash)),
+		zap.String("hash_prefix", hashPrefix),
+		zap.Int("password_len", len(req.Password)),
+	)
 	if err := bcrypt.CompareHashAndPassword([]byte(entity.PasswordHash), []byte(req.Password)); err != nil {
 		s.log.Warn("login: password mismatch", zap.String("email", req.Email), zap.Error(err))
 		return nil, nil, fmt.Errorf("auth.service.Login: %w", apperr.ErrUnauthorized)
