@@ -49,12 +49,12 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_HOST }} "
             # 1. Copy the example file to create the real .env file
-            cp ~/drawpro-deployment/apps/api/.env.example ~/drawpro-deployment/apps/api/.env
-            
+            cp ~/drawpro-deployment/apps/api-ts/.env.example ~/drawpro-deployment/apps/api-ts/.env
+
             # 2. Safely remove the dummy DATABASE_URL and append the real one from Secrets
-            grep -v '^DATABASE_URL=' ~/drawpro-deployment/apps/api/.env > /tmp/api_env.tmp
+            grep -v '^DATABASE_URL=' ~/drawpro-deployment/apps/api-ts/.env > /tmp/api_env.tmp
             printf 'DATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' >> /tmp/api_env.tmp
-            mv /tmp/api_env.tmp ~/drawpro-deployment/apps/api/.env
+            mv /tmp/api_env.tmp ~/drawpro-deployment/apps/api-ts/.env
 
             # 3. Handle the collab app (copies example if it exists, otherwise creates empty file)
             if [ -f ~/drawpro-deployment/apps/collab/.env.example ]; then

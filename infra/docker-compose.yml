@@ -23,9 +23,9 @@ services:
   api:
     build:
       context: ..
-      dockerfile: apps/api/Dockerfile
+      dockerfile: apps/api-ts/Dockerfile
     restart: unless-stopped
-    env_file: ../apps/api/.env
+    env_file: ../apps/api-ts/.env
     environment:
       # DATABASE_URL, JWT secrets come from apps/api/.env
       REDIS_URL: redis://redis:6379
