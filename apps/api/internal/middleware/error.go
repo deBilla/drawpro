@@ -1,0 +1,62 @@
+package middleware
+
+import (
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+
+	apperr "github.com/deBilla/drawpro-api/internal/core/errors"
+)
+
+// ErrorHandler maps errors added via c.Error() to JSON responses and logs them.
+// Error priority: AppError (typed sentinel) → ErrNotFound → generic 500.
+func ErrorHandler(log *zap.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+		if len(c.Errors) == 0 {
+			return
+		}
+		err := c.Errors.Last().Err
+
+		var appErr *apperr.AppError
+		if errors.As(err, &appErr) {
+			status := apperr.HTTPStatus(appErr)
+			code := strings.ToUpper(strings.ReplaceAll(appErr.Cause.Error(), " ", "_"))
+			log.Warn("app error",
+				zap.String("code", code),
+				zap.String("message", appErr.Message),
+				zap.Int("status", status),
+				zap.String("path", c.Request.URL.Path),
+			)
+			c.JSON(status, gin.H{
+				"success": false,
+				"error":   gin.H{"code": code, "message": appErr.Message},
+			})
+			return
+		}
+
+		if errors.Is(err, apperr.ErrNotFound) {
+			log.Warn("not found",
+				zap.String("error", err.Error()),
+				zap.String("path", c.Request.URL.Path),
+			)
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"error":   gin.H{"code": "NOT_FOUND", "message": err.Error()},
+			})
+			return
+		}
+
+		log.Error("internal error",
+			zap.String("error", err.Error()),
+			zap.String("path", c.Request.URL.Path),
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   gin.H{"code": "INTERNAL_ERROR", "message": err.Error()},
+		})
+	}
+}

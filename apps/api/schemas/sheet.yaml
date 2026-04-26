@@ -1,0 +1,40 @@
+module: sheet
+table: sheets
+
+fields:
+  - name: id
+    type: uuid
+    primary: true
+    auto: true
+
+  - name: workspace_id
+    type: string
+    required: true
+
+  - name: name
+    type: string
+    required: true
+
+  - name: elements
+    type: json
+    nullable: true
+
+  - name: app_state
+    type: json
+    nullable: true
+
+  - name: encrypted_data
+    type: string
+    nullable: true
+
+  - name: version
+    type: int
+    auto: true
+
+  - name: created_at
+    type: timestamp
+    auto: true
+
+  - name: updated_at
+    type: timestamp
+    auto: true

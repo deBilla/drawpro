@@ -1,24 +1,13 @@
-FROM node:20-alpine AS base
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
-RUN corepack enable
+COPY apps/api/go.mod apps/api/go.sum ./
+RUN go mod download
+COPY apps/api/ .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o api ./cmd/api
 
-FROM base AS deps
-COPY package.json ./
-COPY apps/api/package.json ./apps/api/
-COPY packages/shared-types/package.json ./packages/shared-types/
-RUN npm install --workspaces --if-present
-
-FROM deps AS builder
-COPY . .
-RUN cd apps/api && npx prisma generate
-RUN cd apps/api && npx tsc
-
-FROM node:20-alpine AS runner
-RUN apk add --no-cache openssl
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/prisma ./prisma
+COPY --from=builder /app/api .
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["./api"]

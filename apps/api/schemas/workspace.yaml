@@ -1,0 +1,28 @@
+module: workspace
+table: workspaces
+
+fields:
+  - name: id
+    type: uuid
+    primary: true
+    auto: true
+
+  - name: name
+    type: string
+    required: true
+
+  - name: encrypted_name
+    type: string
+    nullable: true
+
+  - name: owner_id
+    type: string
+    required: true
+
+  - name: created_at
+    type: timestamp
+    auto: true
+
+  - name: updated_at
+    type: timestamp
+    auto: true

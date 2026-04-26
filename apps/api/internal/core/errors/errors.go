@@ -1,0 +1,50 @@
+// Package errors defines sentinel errors and the AppError type.
+package errors
+
+import (
+	"errors"
+	"net/http"
+)
+
+var (
+	ErrNotFound      = errors.New("not found")
+	ErrForbidden     = errors.New("forbidden")
+	ErrConflict      = errors.New("conflict")
+	ErrLimitExceeded = errors.New("limit exceeded")
+	ErrUnauthorized  = errors.New("unauthorized")
+	ErrInvalidInput  = errors.New("invalid input")
+)
+
+// AppError wraps a sentinel error with a human-readable message.
+type AppError struct {
+	Cause   error
+	Message string
+}
+
+func (e *AppError) Error() string { return e.Message }
+func (e *AppError) Unwrap() error { return e.Cause }
+
+// New creates an AppError from a sentinel and message.
+func New(cause error, msg string) *AppError {
+	return &AppError{Cause: cause, Message: msg}
+}
+
+// HTTPStatus maps a sentinel error to an HTTP status code.
+func HTTPStatus(err error) int {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, ErrForbidden):
+		return http.StatusForbidden
+	case errors.Is(err, ErrConflict):
+		return http.StatusConflict
+	case errors.Is(err, ErrLimitExceeded):
+		return http.StatusTooManyRequests
+	case errors.Is(err, ErrUnauthorized):
+		return http.StatusUnauthorized
+	case errors.Is(err, ErrInvalidInput):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}

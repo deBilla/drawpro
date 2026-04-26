@@ -27,9 +27,10 @@ services:
     restart: unless-stopped
     env_file: ../apps/api/.env
     environment:
-      # DATABASE_URL comes from apps/api/.env (external Postgres/Supabase)
+      # DATABASE_URL, JWT secrets come from apps/api/.env
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
       FRONTEND_URL: http://localhost:3010
     depends_on:
       redis:
