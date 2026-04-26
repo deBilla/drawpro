@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 
 	apperr "github.com/deBilla/drawpro-api/internal/core/errors"
@@ -42,11 +43,12 @@ type service struct {
 	repo  Repository
 	redis *redis.Client
 	cfg   ServiceConfig
+	log   *zap.Logger
 }
 
 // NewService constructs a Service.
-func NewService(repo Repository, redisClient *redis.Client, cfg ServiceConfig) Service {
-	return &service{repo: repo, redis: redisClient, cfg: cfg}
+func NewService(repo Repository, redisClient *redis.Client, cfg ServiceConfig, log *zap.Logger) Service {
+	return &service{repo: repo, redis: redisClient, cfg: cfg, log: log}
 }
 
 func (s *service) Register(ctx context.Context, req RegisterRequest) (*Entity, *TokenPair, error) {
@@ -78,10 +80,12 @@ func (s *service) Register(ctx context.Context, req RegisterRequest) (*Entity, *
 func (s *service) Login(ctx context.Context, req LoginRequest) (*Entity, *TokenPair, error) {
 	entity, err := s.repo.GetByEmail(ctx, req.Email)
 	if err != nil {
+		s.log.Warn("login: GetByEmail failed", zap.String("email", req.Email), zap.Error(err))
 		return nil, nil, fmt.Errorf("auth.service.Login: %w", apperr.ErrUnauthorized)
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(entity.PasswordHash), []byte(req.Password)); err != nil {
+		s.log.Warn("login: password mismatch", zap.String("email", req.Email), zap.Error(err))
 		return nil, nil, fmt.Errorf("auth.service.Login: %w", apperr.ErrUnauthorized)
 	}
 

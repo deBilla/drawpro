@@ -74,7 +74,7 @@ func main() {
 		RefreshSecret: cfg.JWTRefreshSecret,
 		AccessTTL:     time.Duration(cfg.JWTAccessTTL) * time.Second,
 		RefreshTTL:    time.Duration(cfg.JWTRefreshTTL) * time.Second,
-	})
+	}, logger)
 	workspaceSvc := workspace.NewService(workspaceRepo, wmRepo)
 	sheetSvc     := sheet.NewService(sheetRepo, authRepo, wmRepo)
 
