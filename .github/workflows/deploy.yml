@@ -71,13 +71,6 @@ jobs:
             docker compose -f infra/docker-compose.yml build --no-cache
           '
 
-      - name: Run database migrations
-        run: |
-          ssh ${{ secrets.SERVER_HOST }} '
-            cd ~/drawpro-deployment
-            docker compose -f infra/docker-compose.yml run --rm api npx prisma migrate deploy
-          '
-
       - name: Start services
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
