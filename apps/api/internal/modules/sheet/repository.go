@@ -29,11 +29,11 @@ func NewRepository(pool *pgxpool.Pool) Repository {
 	return &repository{pool: pool}
 }
 
-const selectCols = `id, workspace_id, name, elements, app_state, encrypted_data, version, created_at, updated_at`
+const selectCols = `id, "workspaceId", name, elements, "appState", "encryptedData", version, "createdAt", "updatedAt"`
 
 func (r *repository) Create(ctx context.Context, p CreateParams) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO sheets (workspace_id, name)
+		`INSERT INTO "Sheet" ("workspaceId", name)
 		 VALUES ($1, $2)
 		 RETURNING `+selectCols,
 		p.WorkspaceID, p.Name,
@@ -47,7 +47,7 @@ func (r *repository) Create(ctx context.Context, p CreateParams) (*Entity, error
 
 func (r *repository) GetByID(ctx context.Context, id string) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT `+selectCols+` FROM sheets WHERE id = $1`, id,
+		`SELECT `+selectCols+` FROM "Sheet" WHERE id = $1`, id,
 	)
 	e, err := scanEntity(row)
 	if err != nil {
@@ -61,7 +61,7 @@ func (r *repository) GetByID(ctx context.Context, id string) (*Entity, error) {
 
 func (r *repository) ListByWorkspaceID(ctx context.Context, workspaceID string) ([]*Entity, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT `+selectCols+` FROM sheets WHERE workspace_id = $1 ORDER BY updated_at DESC`,
+		`SELECT `+selectCols+` FROM "Sheet" WHERE "workspaceId" = $1 ORDER BY "updatedAt" DESC`,
 		workspaceID,
 	)
 	if err != nil {
@@ -85,13 +85,13 @@ func (r *repository) ListByWorkspaceID(ctx context.Context, workspaceID string) 
 
 func (r *repository) Update(ctx context.Context, p UpdateParams) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`UPDATE sheets SET
-		  name           = COALESCE($2, name),
-		  elements       = COALESCE($3, elements),
-		  app_state      = COALESCE($4, app_state),
-		  encrypted_data = COALESCE($5, encrypted_data),
-		  version        = version + 1,
-		  updated_at     = now()
+		`UPDATE "Sheet" SET
+		  name             = COALESCE($2, name),
+		  elements         = COALESCE($3, elements),
+		  "appState"       = COALESCE($4, "appState"),
+		  "encryptedData"  = COALESCE($5, "encryptedData"),
+		  version          = version + 1,
+		  "updatedAt"      = now()
 		 WHERE id = $1
 		 RETURNING `+selectCols,
 		p.ID, p.Name, p.Elements, p.AppState, p.EncryptedData,
@@ -107,7 +107,7 @@ func (r *repository) Update(ctx context.Context, p UpdateParams) (*Entity, error
 }
 
 func (r *repository) Delete(ctx context.Context, id string) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM sheets WHERE id = $1`, id)
+	tag, err := r.pool.Exec(ctx, `DELETE FROM "Sheet" WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("sheet.repository.Delete: %w", err)
 	}

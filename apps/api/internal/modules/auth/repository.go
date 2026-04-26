@@ -44,11 +44,11 @@ func NewRepository(pool *pgxpool.Pool) Repository {
 	return &repository{pool: pool}
 }
 
-const selectCols = `id, email, password_hash, name, public_key, encrypted_private_key, salt, recovery_codes_data, created_at, updated_at`
+const selectCols = `id, email, "passwordHash", name, "publicKey", "encryptedPrivateKey", salt, "recoveryCodesData", "createdAt", "updatedAt"`
 
 func (r *repository) Create(ctx context.Context, p CreateParams) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO users (email, password_hash, name)
+		`INSERT INTO "User" (email, "passwordHash", name)
 		 VALUES ($1, $2, $3)
 		 RETURNING `+selectCols,
 		p.Email, p.PasswordHash, p.Name,
@@ -62,7 +62,7 @@ func (r *repository) Create(ctx context.Context, p CreateParams) (*Entity, error
 
 func (r *repository) GetByID(ctx context.Context, id string) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT `+selectCols+` FROM users WHERE id = $1`, id,
+		`SELECT `+selectCols+` FROM "User" WHERE id = $1`, id,
 	)
 	e, err := scanEntity(row)
 	if err != nil {
@@ -76,7 +76,7 @@ func (r *repository) GetByID(ctx context.Context, id string) (*Entity, error) {
 
 func (r *repository) GetByEmail(ctx context.Context, email string) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT `+selectCols+` FROM users WHERE email = $1`, email,
+		`SELECT `+selectCols+` FROM "User" WHERE email = $1`, email,
 	)
 	e, err := scanEntity(row)
 	if err != nil {
@@ -90,8 +90,8 @@ func (r *repository) GetByEmail(ctx context.Context, email string) (*Entity, err
 
 func (r *repository) SetKeys(ctx context.Context, p SetKeysParams) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`UPDATE users
-		 SET public_key = $2, encrypted_private_key = $3, salt = $4, recovery_codes_data = $5, updated_at = now()
+		`UPDATE "User"
+		 SET "publicKey" = $2, "encryptedPrivateKey" = $3, salt = $4, "recoveryCodesData" = $5, "updatedAt" = now()
 		 WHERE id = $1
 		 RETURNING `+selectCols,
 		p.ID, p.PublicKey, p.EncryptedPrivateKey, p.Salt, p.RecoveryCodesData,

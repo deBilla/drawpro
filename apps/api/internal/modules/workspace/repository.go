@@ -33,9 +33,9 @@ func NewRepository(pool *pgxpool.Pool) Repository {
 
 func (r *repository) Create(ctx context.Context, p CreateParams) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO workspaces (name, encrypted_name, owner_id)
+		`INSERT INTO "Workspace" (name, "encryptedName", "ownerId")
 		 VALUES ($1, $2, $3)
-		 RETURNING id, name, encrypted_name, owner_id, created_at, updated_at`,
+		 RETURNING id, name, "encryptedName", "ownerId", "createdAt", "updatedAt"`,
 		p.Name, p.EncryptedName, p.OwnerID,
 	)
 	entity, err := scanEntity(row)
@@ -47,8 +47,8 @@ func (r *repository) Create(ctx context.Context, p CreateParams) (*Entity, error
 
 func (r *repository) GetByID(ctx context.Context, id string) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, name, encrypted_name, owner_id, created_at, updated_at
-		 FROM workspaces WHERE id = $1`, id,
+		`SELECT id, name, "encryptedName", "ownerId", "createdAt", "updatedAt"
+		 FROM "Workspace" WHERE id = $1`, id,
 	)
 	entity, err := scanEntity(row)
 	if err != nil {
@@ -63,14 +63,14 @@ func (r *repository) GetByID(ctx context.Context, id string) (*Entity, error) {
 // ListByUserID returns all workspaces the user is a member of, with their role and sheet count.
 func (r *repository) ListByUserID(ctx context.Context, userID string) ([]*WorkspaceWithRole, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT w.id, w.name, w.encrypted_name, w.owner_id, w.created_at, w.updated_at,
+		`SELECT w.id, w.name, w."encryptedName", w."ownerId", w."createdAt", w."updatedAt",
 		        wm.role,
 		        COUNT(s.id) AS sheets_count
-		 FROM workspaces w
-		 JOIN workspace_members wm ON wm.workspace_id = w.id AND wm.user_id = $1
-		 LEFT JOIN sheets s ON s.workspace_id = w.id
-		 GROUP BY w.id, w.name, w.encrypted_name, w.owner_id, w.created_at, w.updated_at, wm.role
-		 ORDER BY w.updated_at DESC`,
+		 FROM "Workspace" w
+		 JOIN "WorkspaceMember" wm ON wm."workspaceId" = w.id AND wm."userId" = $1
+		 LEFT JOIN "Sheet" s ON s."workspaceId" = w.id
+		 GROUP BY w.id, w.name, w."encryptedName", w."ownerId", w."createdAt", w."updatedAt", wm.role
+		 ORDER BY w."updatedAt" DESC`,
 		userID,
 	)
 	if err != nil {
@@ -105,8 +105,8 @@ func (r *repository) GetByIDWithSheets(ctx context.Context, id string) (*Workspa
 	}
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, encrypted_data, version, created_at, updated_at
-		 FROM sheets WHERE workspace_id = $1 ORDER BY updated_at DESC`,
+		`SELECT id, name, "encryptedData", version, "createdAt", "updatedAt"
+		 FROM "Sheet" WHERE "workspaceId" = $1 ORDER BY "updatedAt" DESC`,
 		id,
 	)
 	if err != nil {
@@ -135,12 +135,12 @@ func (r *repository) GetByIDWithSheets(ctx context.Context, id string) (*Workspa
 
 func (r *repository) Update(ctx context.Context, p UpdateParams) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`UPDATE workspaces SET
-		  name           = COALESCE($2, name),
-		  encrypted_name = COALESCE($3, encrypted_name),
-		  updated_at     = now()
+		`UPDATE "Workspace" SET
+		  name            = COALESCE($2, name),
+		  "encryptedName" = COALESCE($3, "encryptedName"),
+		  "updatedAt"     = now()
 		 WHERE id = $1
-		 RETURNING id, name, encrypted_name, owner_id, created_at, updated_at`,
+		 RETURNING id, name, "encryptedName", "ownerId", "createdAt", "updatedAt"`,
 		p.ID, p.Name, p.EncryptedName,
 	)
 	entity, err := scanEntity(row)
@@ -154,7 +154,7 @@ func (r *repository) Update(ctx context.Context, p UpdateParams) (*Entity, error
 }
 
 func (r *repository) Delete(ctx context.Context, id string) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM workspaces WHERE id = $1`, id)
+	tag, err := r.pool.Exec(ctx, `DELETE FROM "Workspace" WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("workspace.repository.Delete: %w", err)
 	}

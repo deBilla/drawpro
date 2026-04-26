@@ -28,9 +28,9 @@ func NewRepository(pool *pgxpool.Pool) Repository {
 
 func (r *repository) Create(ctx context.Context, workspaceID, userID string, role Role) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO workspace_members (workspace_id, user_id, role)
+		`INSERT INTO "WorkspaceMember" ("workspaceId", "userId", role)
 		 VALUES ($1, $2, $3)
-		 RETURNING workspace_id, user_id, role, joined_at`,
+		 RETURNING "workspaceId", "userId", role, "joinedAt"`,
 		workspaceID, userID, string(role),
 	)
 	e, err := scanEntity(row)
@@ -42,9 +42,9 @@ func (r *repository) Create(ctx context.Context, workspaceID, userID string, rol
 
 func (r *repository) Get(ctx context.Context, workspaceID, userID string) (*Entity, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT workspace_id, user_id, role, joined_at
-		 FROM workspace_members
-		 WHERE workspace_id = $1 AND user_id = $2`,
+		`SELECT "workspaceId", "userId", role, "joinedAt"
+		 FROM "WorkspaceMember"
+		 WHERE "workspaceId" = $1 AND "userId" = $2`,
 		workspaceID, userID,
 	)
 	e, err := scanEntity(row)
