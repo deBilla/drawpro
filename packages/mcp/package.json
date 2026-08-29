@@ -1,6 +1,6 @@
 {
   "name": "@drawpro/mcp",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "MCP server for DrawPro \u2014 read and create end-to-end encrypted Excalidraw diagrams from Claude",
   "license": "MIT",
   "repository": {

@@ -80,7 +80,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.6.2';
+const VERSION = '0.6.3';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -911,17 +911,35 @@ async function telemetry(action: string | undefined): Promise<void> {
   if (action === 'on') {
     writeConfig({ telemetry: 'on' });
     console.log(`Telemetry on. Usage is recorded to ${logPath()}`);
-    console.log('Roughly once a day, an aggregate of it is sent:\n');
-    console.log(
-      report
-        ? JSON.stringify(report, null, 2)
-        : '  (no calls recorded yet — the first report goes out once you have used the tools)',
-    );
-    console.log('\nTurn it off any time with: drawpro-mcp telemetry off');
+
+    // Send straight away rather than waiting for the next server start.
+    // Background sends only fire when the server boots, so enabling telemetry
+    // mid-session used to do nothing visible until Claude Code was restarted —
+    // which looks exactly like a broken pipe, and gives no way to tell the
+    // difference.
+    const built = buildReport();
+    if (!built) {
+      console.log('\nNothing recorded yet. The first report goes out once you have used the tools.');
+      console.log('Turn it off any time with: drawpro-mcp telemetry off');
+      return;
+    }
+
+    console.log('\nSending this now, and roughly once a day after:\n');
+    console.log(JSON.stringify(built, null, 2));
+    const { ok, detail } = await sendReport(built as unknown as Record<string, unknown>);
+    if (ok) {
+      writeConfig({ lastReportAt: new Date().toISOString() });
+      console.log('\nSent.');
+    } else {
+      console.log(`\nCould not send it (${detail}). Telemetry is still on and it will retry.`);
+    }
+    console.log('Turn it off any time with: drawpro-mcp telemetry off');
     return;
   }
 
-  console.log(`Telemetry is ${telemetryEnabled() ? 'ON' : 'OFF'}.\n`);
+  const last = readConfig().lastReportAt;
+  console.log(`Telemetry is ${telemetryEnabled() ? 'ON' : 'OFF'}.`);
+  console.log(last ? `Last report sent ${last}.\n` : 'No report has been sent yet.\n');
   console.log('If enabled, this is the entire payload — tool counts and timings,');
   console.log('no account, no token, no workspace or sheet ids, nothing drawn:\n');
   console.log(
