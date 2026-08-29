@@ -22,6 +22,11 @@ import { z } from 'zod';
 import {
   DrawProClient,
   askHidden,
+  installId,
+  readConfig,
+  telemetryEnabled,
+  writeConfig,
+  type RequestTrace,
   decryptPrivateKey,
   forgetKey,
   loadKey,
@@ -63,10 +68,20 @@ function api(): DrawProClient {
           '  claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp',
       );
     }
-    clientInstance = new DrawProClient(BASE_URL, token);
+    clientInstance = new DrawProClient(BASE_URL, token, (t) => inFlight.push(t));
   }
   return clientInstance;
 }
+
+/** One per server process, so calls from a single Claude session group together. */
+const SESSION_ID = Math.random().toString(36).slice(2, 10);
+const VERSION = '0.4.0';
+
+/** Requests made while handling the current tool call. Reset per call, so a
+ *  trace can separate time spent talking to DrawPro from local crypto and
+ *  layout work — which is the difference between "the network is slow" and
+ *  "argon2 is slow", and they need very different fixes. */
+let inFlight: RequestTrace[] = [];
 
 let cachedUser: DrawProUser | null = null;
 async function currentUser(): Promise<DrawProUser> {
@@ -158,14 +173,21 @@ type Handler = (args: never) => Promise<{ content: { type: 'text'; text: string 
 function instrument(name: string, handler: Handler): Handler {
   return (async (args: ToolArgs) => {
     const started = Date.now();
+    inFlight = [];
     try {
       const result = await (handler as (a: ToolArgs) => ReturnType<Handler>)(args);
       const body = result.content.map((c: { text: string }) => c.text).join('\n');
+      const apiMs = inFlight.reduce((sum, t) => sum + t.ms, 0);
+      const total = Date.now() - started;
       logCall({
+        session: SESSION_ID,
         tool: name,
         ok: true,
         refused: REFUSALS.some((r) => body.includes(r)),
-        ms: Date.now() - started,
+        ms: total,
+        api_ms: apiMs,
+        local_ms: total - apiMs,
+        requests: inFlight.map((t) => ({ m: t.method, p: t.path, s: t.status, ms: t.ms, bytes: t.bytes })),
         args: summarise(args),
         // Tools word this two ways: "38 elements" and "elements: 38".
         elements:
@@ -174,10 +196,16 @@ function instrument(name: string, handler: Handler): Handler {
       });
       return result;
     } catch (err) {
+      const apiMs = inFlight.reduce((sum, t) => sum + t.ms, 0);
+      const total = Date.now() - started;
       logCall({
+        session: SESSION_ID,
         tool: name,
         ok: false,
-        ms: Date.now() - started,
+        ms: total,
+        api_ms: apiMs,
+        local_ms: total - apiMs,
+        requests: inFlight.map((t) => ({ m: t.method, p: t.path, s: t.status, ms: t.ms, bytes: t.bytes })),
         args: summarise(args),
         error: (err as Error).message.slice(0, 200),
       });
@@ -186,7 +214,7 @@ function instrument(name: string, handler: Handler): Handler {
   }) as Handler;
 }
 
-const server = new McpServer({ name: 'drawpro', version: '0.3.1' });
+const server = new McpServer({ name: 'drawpro', version: VERSION });
 
 /** server.tool, with the handler wrapped so the call is logged. */
 const tool: typeof server.tool = ((name: string, ...rest: unknown[]) => {
@@ -607,33 +635,43 @@ tool(
  * paste into a bug report. That is the intended path for improving the package:
  * the log stays on your machine, and you choose whether to share the summary.
  */
-function stats(path: string | undefined, asJson: boolean): void {
-  const file = path ?? process.env.DRAWPRO_MCP_LOG;
-  if (!file) {
-    console.error('Set DRAWPRO_MCP_LOG, or pass a path: drawpro-mcp stats <file>');
-    process.exit(2);
-  }
+interface ToolSummary {
+  tool: string;
+  calls: number;
+  refused: number;
+  failed: number;
+  median_ms: number;
+}
 
-  let lines: string[];
+interface LogSummary {
+  calls: number;
+  writes: number;
+  from: string;
+  to: string;
+  tools: ToolSummary[];
+}
+
+const WRITE_TOOLS = ['create_diagram', 'update_diagram', 'edit_sheet_text', 'import_sheet'];
+
+/** Aggregate a usage log. Shared by `stats` and by telemetry, so what is shown
+ *  and what would be sent can never drift apart. */
+function summariseLog(file: string): LogSummary | null {
+  let rows: Record<string, unknown>[];
   try {
-    lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
-  } catch (err) {
-    console.error(`Could not read ${file}: ${(err as Error).message}`);
-    process.exit(2);
+    rows = readFileSync(file, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          return [JSON.parse(line) as Record<string, unknown>];
+        } catch {
+          return [];
+        }
+      });
+  } catch {
+    return null;
   }
-
-  const rows = lines.flatMap((l) => {
-    try {
-      return [JSON.parse(l) as Record<string, unknown>];
-    } catch {
-      return [];
-    }
-  });
-
-  if (rows.length === 0) {
-    console.log(asJson ? '{"calls":0}' : 'No calls recorded yet.');
-    return;
-  }
+  if (rows.length === 0) return null;
 
   const byTool = new Map<string, { n: number; refused: number; failed: number; ms: number[] }>();
   for (const r of rows) {
@@ -649,56 +687,161 @@ function stats(path: string | undefined, asJson: boolean): void {
   const median = (xs: number[]) =>
     xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0;
 
-  const written = rows.filter(
-    (r) =>
-      ['create_diagram', 'update_diagram', 'edit_sheet_text', 'import_sheet'].includes(
-        String(r.tool),
-      ) &&
-      !r.refused &&
-      r.ok !== false,
-  ).length;
+  return {
+    calls: rows.length,
+    writes: rows.filter(
+      (r) => WRITE_TOOLS.includes(String(r.tool)) && !r.refused && r.ok !== false,
+    ).length,
+    from: String(rows[0].ts).slice(0, 10),
+    to: String(rows[rows.length - 1].ts).slice(0, 10),
+    tools: [...byTool.entries()]
+      .sort((x, y) => y[1].n - x[1].n)
+      .map(([tool, a]) => ({
+        tool,
+        calls: a.n,
+        refused: a.refused,
+        failed: a.failed,
+        median_ms: median(a.ms),
+      })),
+  };
+}
 
-  const tools = [...byTool.entries()]
-    .sort((x, y) => y[1].n - x[1].n)
-    .map(([name, a]) => ({
-      tool: name,
-      calls: a.n,
-      refused: a.refused,
-      failed: a.failed,
-      median_ms: median(a.ms),
-    }));
+/**
+ * Summarise the usage log.
+ *
+ *   drawpro-mcp stats [path] [--json]
+ *
+ * The numbers worth watching are the refusal rates: a tool that frequently
+ * declines is one whose description is not steering the model well, which is
+ * cheaper to learn from real use than from a synthetic eval.
+ *
+ * Unlike the raw log — which carries workspace and sheet ids so you can
+ * correlate calls against your own account — this output is aggregate only.
+ * Nothing here identifies an account, a workspace, a sheet, or anything drawn
+ * on one, which is what makes it safe to paste into a bug report.
+ */
+function stats(path: string | undefined, asJson: boolean): void {
+  const file = path ?? process.env.DRAWPRO_MCP_LOG;
+  if (!file) {
+    console.error('Set DRAWPRO_MCP_LOG, or pass a path: drawpro-mcp stats <file>');
+    process.exit(2);
+  }
 
-  if (asJson) {
-    console.log(
-      JSON.stringify(
-        {
-          version: '0.3.2',
-          calls: rows.length,
-          from: String(rows[0].ts).slice(0, 10),
-          to: String(rows[rows.length - 1].ts).slice(0, 10),
-          writes: written,
-          tools,
-        },
-        null,
-        2,
-      ),
-    );
+  const summary = summariseLog(file);
+  if (!summary) {
+    console.log(asJson ? '{"calls":0}' : 'No calls recorded yet.');
     return;
   }
 
-  console.log(`${rows.length} calls  ${String(rows[0].ts).slice(0, 10)} .. ${String(rows[rows.length - 1].ts).slice(0, 10)}\n`);
+  if (asJson) {
+    console.log(JSON.stringify({ version: VERSION, ...summary }, null, 2));
+    return;
+  }
+
+  console.log(`${summary.calls} calls  ${summary.from} .. ${summary.to}\n`);
   console.log('  tool               calls  refused  failed  median');
-  for (const t of tools) {
+  for (const t of summary.tools) {
     const pct = t.calls ? Math.round((t.refused / t.calls) * 100) : 0;
     console.log(
       `  ${t.tool.padEnd(18)} ${String(t.calls).padStart(5)}  ${String(t.refused).padStart(4)} ${String(pct).padStart(3)}%  ${String(t.failed).padStart(6)}  ${String(t.median_ms).padStart(5)}ms`,
     );
   }
-  console.log(`\n  ${written} successful writes to sheets`);
+  console.log(`\n  ${summary.writes} successful writes to sheets`);
   console.log(
     '\n  No ids, account details, or diagram content above — safe to paste into a bug report.',
   );
   console.log('  Add --json for a machine-readable copy.');
+}
+
+
+// ─── Telemetry ───────────────────────────────────────────────────────────────
+
+/** Exactly what a report contains. Nothing else is ever sent. */
+function buildReport(): { installId: string; mcpVersion: string; calls: number; writes: number; tools: unknown[] } | null {
+  const file = process.env.DRAWPRO_MCP_LOG;
+  if (!file) return null;
+  const summary = summariseLog(file);
+  if (!summary) return null;
+  return {
+    installId: installId(),
+    mcpVersion: VERSION,
+    calls: summary.calls,
+    writes: summary.writes,
+    tools: summary.tools,
+  };
+}
+
+async function sendReport(report: Record<string, unknown>): Promise<{ ok: boolean; detail: string }> {
+  try {
+    const res = await fetch(`${BASE_URL}/telemetry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(report),
+    });
+    return { ok: res.ok, detail: `HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, detail: (err as Error).message };
+  }
+}
+
+/**
+ * `drawpro-mcp telemetry [on|off]`
+ *
+ * Off unless turned on, and the payload is printed before the choice is made —
+ * consent to something unseen is not consent. Reports carry an install id
+ * generated on this machine, never the account, the token, or anything about a
+ * diagram.
+ */
+async function telemetry(action: string | undefined): Promise<void> {
+  if (action === 'off') {
+    writeConfig({ telemetry: 'off' });
+    console.log('Telemetry off. Nothing will be sent.');
+    return;
+  }
+
+  const report = buildReport();
+
+  if (action === 'on') {
+    writeConfig({ telemetry: 'on' });
+    console.log('Telemetry on. Roughly once a day, this is sent:\n');
+    console.log(report ? JSON.stringify(report, null, 2) : '  (nothing yet — set DRAWPRO_MCP_LOG to record usage)');
+    console.log('\nTurn it off any time with: drawpro-mcp telemetry off');
+    return;
+  }
+
+  console.log(`Telemetry is ${telemetryEnabled() ? 'ON' : 'OFF'}.\n`);
+  console.log('If enabled, this is the entire payload — tool counts and timings,');
+  console.log('no account, no token, no workspace or sheet ids, nothing drawn:\n');
+  console.log(report ? JSON.stringify(report, null, 2) : '  (nothing recorded yet — set DRAWPRO_MCP_LOG first)');
+  console.log('\n  drawpro-mcp telemetry on     share it');
+  console.log('  drawpro-mcp telemetry off    stop');
+  console.log('  drawpro-mcp report           send once now, without turning it on');
+}
+
+/** One-off send, for "here is what happened" in a bug report. */
+async function reportOnce(): Promise<void> {
+  const report = buildReport();
+  if (!report) {
+    console.error('Nothing to report. Set DRAWPRO_MCP_LOG to record usage first.');
+    process.exit(2);
+  }
+  console.log('Sending:\n');
+  console.log(JSON.stringify(report, null, 2));
+  const { ok, detail } = await sendReport(report as unknown as Record<string, unknown>);
+  console.log(ok ? '\nSent. Thank you.' : `\nCould not send (${detail}). Paste the JSON above into an issue instead.`);
+}
+
+/** Background send when enabled, at most daily. Never blocks or reports errors:
+ *  a telemetry failure must not degrade the tool for the person who opted in. */
+function maybeSendInBackground(): void {
+  if (!telemetryEnabled()) return;
+  const last = readConfig().lastReportAt;
+  if (last && Date.now() - Date.parse(last) < 24 * 60 * 60 * 1000) return;
+  const report = buildReport();
+  if (!report) return;
+  void sendReport(report as unknown as Record<string, unknown>).then(({ ok }) => {
+    if (ok) writeConfig({ lastReportAt: new Date().toISOString() });
+  });
 }
 
 async function main() {
@@ -706,6 +849,16 @@ async function main() {
 
   if (command === 'login') {
     await login(process.argv.includes('--forget'));
+    return;
+  }
+
+  if (command === 'telemetry') {
+    await telemetry(process.argv[3]);
+    return;
+  }
+
+  if (command === 'report') {
+    await reportOnce();
     return;
   }
 
@@ -717,11 +870,12 @@ async function main() {
 
   if (command && command !== 'serve') {
     console.error(
-      `Unknown command "${command}". Use: drawpro-mcp [serve|login|stats] [--forget]`,
+      `Unknown command "${command}". Use: drawpro-mcp [serve|login|stats|telemetry|report]`,
     );
     process.exit(2);
   }
 
+  maybeSendInBackground();
   await server.connect(new StdioServerTransport());
 }
 

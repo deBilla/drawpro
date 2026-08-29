@@ -31,13 +31,26 @@ export interface SheetSummary {
   updatedAt: string;
 }
 
+/** Reported per HTTP request, so callers can separate network time from their own. */
+export interface RequestTrace {
+  method: string;
+  path: string;
+  status: number;
+  ms: number;
+  bytes: number;
+}
+
 export class DrawProClient {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
+    /** Optional observer. Timing is measured here because only this layer can
+     *  tell network time apart from local crypto and layout work. */
+    private readonly onRequest?: (trace: RequestTrace) => void,
   ) {}
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const started = Date.now();
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...init,
       headers: {
@@ -46,7 +59,22 @@ export class DrawProClient {
         ...(init?.headers ?? {}),
       },
     });
-    const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
+    const raw = await res.text();
+    this.onRequest?.({
+      method: init?.method ?? 'GET',
+      path: path.replace(/\/[a-z0-9]{20,}/gi, '/:id'),
+      status: res.status,
+      ms: Date.now() - started,
+      bytes: raw.length,
+    });
+
+    let body: { data?: T; error?: string } = {};
+    try {
+      body = JSON.parse(raw) as typeof body;
+    } catch {
+      // Non-JSON response (a proxy error page, typically) — fall through to the
+      // status check below, which produces a better message than a parse error.
+    }
     if (!res.ok) {
       throw new Error(`${path} -> ${res.status} ${body.error ?? JSON.stringify(body)}`);
     }

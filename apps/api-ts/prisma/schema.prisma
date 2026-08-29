@@ -88,3 +88,23 @@ model Sheet {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
+
+/// Anonymous usage aggregate from an opted-in MCP install.
+///
+/// Deliberately not linked to a User: the install id is generated on the
+/// client and is not derived from an account, so reports can be grouped by
+/// install without identifying whose it is. Nothing here describes a diagram.
+model TelemetryReport {
+  id         String   @id @default(cuid())
+  /// Client-generated UUID, stable per install, not tied to an account.
+  installId  String
+  mcpVersion String
+  calls      Int
+  writes     Int
+  /// [{ tool, calls, refused, failed, median_ms }]
+  tools      Json
+  receivedAt DateTime @default(now())
+
+  @@index([installId])
+  @@index([receivedAt])
+}
