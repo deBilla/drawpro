@@ -1,6 +1,6 @@
 Review the DrawPro database schema for correctness and best practices.
 
-Read `apps/api/prisma/schema.prisma` and analyze:
+Read `apps/api-ts/prisma/schema.prisma` and analyze:
 
 1. **Model design** — are entities well-structured? Proper normalization? Missing fields?
 2. **Relationships** — are foreign keys and relations correctly defined? Cascade rules appropriate?
@@ -10,9 +10,9 @@ Read `apps/api/prisma/schema.prisma` and analyze:
    - Fields used in ORDER BY
 4. **Types** — are field types appropriate? (e.g., String vs Text for large content, DateTime precision)
 5. **Defaults** — are defaults sensible? (cuid for IDs, now() for timestamps)
-6. **Migrations** — review migration history in `apps/api/prisma/migrations/` for any risky operations (data loss, long locks)
+6. **Migrations** — review migration history in `apps/api-ts/prisma/migrations/` for any risky operations (data loss, long locks)
 7. **Consistency** — do naming conventions match across models?
 
-Also check that all Prisma queries in the route handlers (`apps/api/src/routes/*.ts`) are efficient — look for N+1 patterns, missing includes, unnecessary selects.
+Also check that all Prisma queries in the route handlers (`apps/api-ts/src/routes/*.ts`) are efficient — look for N+1 patterns, missing includes, unnecessary selects.
 
 Present findings with specific ALTER suggestions or Prisma schema changes.

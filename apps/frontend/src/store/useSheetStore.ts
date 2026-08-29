@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Sheet } from '@drawpro/shared-types';
 import { sheetsApi } from '../lib/api';
-import { decryptPrivateKey, decryptSheet } from '../lib/crypto';
+import { decryptPrivateKey, decryptSheet, encryptMessage } from '../lib/crypto';
 import { useAuthStore } from './useAuthStore';
 
 /** Raw encrypted sheet as returned by the API (before client-side decryption). */
@@ -128,7 +128,15 @@ export const useSheetStore = create<SheetState>()((set, get) => ({
   async saveSheet(workspaceId, sheetId, name, elements, appState) {
     set({ saving: true, error: null });
     try {
-      const updated = await sheetsApi.update(workspaceId, sheetId, { name, elements, appState });
+      const { user } = useAuthStore.getState();
+
+      // Encrypt in the browser. The server stores an opaque blob and never sees
+      // the drawing — it only holds the public key the blob was sealed to.
+      const body = user?.publicKey
+        ? { encryptedData: await encryptMessage(JSON.stringify({ name, elements, appState }), user.publicKey) }
+        : { name, elements, appState };
+
+      const updated = await sheetsApi.update(workspaceId, sheetId, body);
 
       set({
         currentSheet: updated.encryptedData

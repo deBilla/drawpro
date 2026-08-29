@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
     env_file: ../apps/api-ts/.env
     environment:
-      # DATABASE_URL, JWT secrets come from apps/api/.env
+      # DATABASE_URL, JWT secrets come from apps/api-ts/.env (see env_file above).
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
@@ -36,7 +36,11 @@ services:
       redis:
         condition: service_healthy
 
+  # Real-time collaboration (Yjs). Deferred to a future phase: the frontend has
+  # no Yjs client wired up yet, so this server has no clients. Kept defined but
+  # off by default — bring it back with:  docker compose --profile collab up
   collab:
+    profiles: ['collab']
     build:
       context: ..
       dockerfile: apps/collab/Dockerfile
@@ -58,7 +62,6 @@ services:
       - '3010:80'   # only exposed port
     depends_on:
       - api
-      - collab
 
 volumes:
   redis_data:

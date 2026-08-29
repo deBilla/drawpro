@@ -128,7 +128,21 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
   },
 
   async createSheet(workspaceId, name) {
-    const sheet = await sheetsApi.create(workspaceId, { name });
+    const { user } = useAuthStore.getState();
+
+    // A sheet name is content. Seal it in the browser like everything else, so a
+    // new sheet never reaches the server with a readable title.
+    const body = user?.publicKey
+      ? {
+          name: '[encrypted]',
+          encryptedData: await encryptMessage(
+            JSON.stringify({ name, elements: [], appState: {} }),
+            user.publicKey,
+          ),
+        }
+      : { name };
+
+    const sheet = await sheetsApi.create(workspaceId, body);
     const summary: SheetSummary = {
       id: sheet.id,
       workspaceId: sheet.workspaceId,
@@ -143,6 +157,11 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => ({
       activeWorkspace: s.activeWorkspace
         ? { ...s.activeWorkspace, sheets: [summary, ...s.activeWorkspace.sheets] }
         : null,
+      // We already know the plaintext name — seed it so the Dashboard doesn't
+      // render '[encrypted]' until the next decryptSheetNames() pass.
+      decryptedSheetNames: summary.isEncrypted
+        ? { ...s.decryptedSheetNames, [summary.id]: name }
+        : s.decryptedSheetNames,
     }));
     return summary;
   },

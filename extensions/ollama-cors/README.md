@@ -14,6 +14,15 @@ Browsers block web pages from making requests to `localhost` for security reason
 4. Click **Load unpacked** and select this `ollama-cors` folder
 5. The extension icon should appear in your toolbar
 
+## Packaging (for distribution)
+
+The `.zip` is a build artifact and is not committed. Rebuild it from this folder:
+
+```bash
+cd extensions/ollama-cors
+zip -r ../ollama-cors.zip manifest.json background.js icon48.png icon128.png README.md
+```
+
 ## What it does
 
 - Adds CORS headers to responses from `localhost:11434` (Ollama's default port)

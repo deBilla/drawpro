@@ -9,10 +9,10 @@ I'll describe the feature I want to build. You should:
 
 **2. Technical Scope**
 Analyze what needs to change in each layer:
-- **Database** — new models or fields in `apps/api/prisma/schema.prisma`?
+- **Database** — new models or fields in `apps/api-ts/prisma/schema.prisma`?
 - **Shared types** — new types in `packages/shared-types/src/index.ts`?
-- **API routes** — new endpoints or modifications to existing routes in `apps/api/src/routes/`?
-- **API middleware** — new middleware needed in `apps/api/src/middleware/`?
+- **API routes** — new endpoints or modifications to existing routes in `apps/api-ts/src/routes/`?
+- **API middleware** — new middleware needed in `apps/api-ts/src/middleware/`?
 - **Frontend pages** — new pages in `apps/frontend/src/pages/`?
 - **Frontend components** — new or modified components in `apps/frontend/src/components/`?
 - **Frontend stores** — new or modified Zustand stores in `apps/frontend/src/store/`?

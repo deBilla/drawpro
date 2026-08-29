@@ -15,7 +15,7 @@ Perform a comprehensive review:
 
 3. **Architecture check**:
    - Are shared types updated in `packages/shared-types/src/index.ts`?
-   - Are new routes mounted in `apps/api/src/index.ts`?
+   - Are new routes mounted in `apps/api-ts/src/index.ts`?
    - Are new pages added to the router in `apps/frontend/src/App.tsx`?
    - Does the Prisma schema need a migration?
 

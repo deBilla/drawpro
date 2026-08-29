@@ -3,7 +3,7 @@ Perform a security audit of the DrawPro codebase.
 Conduct a thorough security review covering OWASP Top 10 and application-specific concerns:
 
 **1. Authentication & Session Management**
-- Review JWT implementation in `apps/api/src/routes/auth.ts` and `apps/api/src/middleware/auth.ts`
+- Review JWT implementation in `apps/api-ts/src/routes/auth.ts` and `apps/api-ts/src/middleware/auth.ts`
 - Check token storage, refresh rotation, and revocation in Redis
 - Review password hashing (bcrypt) configuration
 - Check for timing attacks in auth comparisons
@@ -22,11 +22,11 @@ Conduct a thorough security review covering OWASP Top 10 and application-specifi
 **4. Cryptography**
 - Audit E2EE implementation in `apps/frontend/src/lib/crypto.ts`
 - Review key derivation (Argon2id parameters)
-- Check encrypted data handling in `apps/api/src/routes/sheets.ts`
+- Check encrypted data handling in `apps/api-ts/src/routes/sheets.ts`
 - Verify no plaintext secrets in code or configs
 
 **5. Infrastructure**
-- Review CORS configuration in `apps/api/src/index.ts`
+- Review CORS configuration in `apps/api-ts/src/index.ts`
 - Check helmet configuration
 - Review rate limiting setup
 - Audit docker-compose for exposed ports and default credentials

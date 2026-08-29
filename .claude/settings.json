@@ -27,7 +27,7 @@
       "Bash(curl -s -X POST http://localhost:11434/api/chat -H \"Content-Type: text/plain\" -H \"Origin: https://drawpro.kithly.app\" -d '{\"\"\"\"model\"\"\"\":\"\"\"\"llava\"\"\"\",\"\"\"\"messages\"\"\"\":[{\"\"\"\"role\"\"\"\":\"\"\"\"user\"\"\"\",\"\"\"\"content\"\"\"\":\"\"\"\"hello\"\"\"\"}],\"\"\"\"stream\"\"\"\":false}')",
       "Bash(curl -v -X POST http://localhost:11434/api/chat -H \"Content-Type: text/plain\" -H \"Origin: https://drawpro.kithly.app\" -d '{\"\"\"\"model\"\"\"\":\"\"\"\"llava\"\"\"\",\"\"\"\"messages\"\"\"\":[{\"\"\"\"role\"\"\"\":\"\"\"\"user\"\"\"\",\"\"\"\"content\"\"\"\":\"\"\"\"say hi\"\"\"\"}],\"\"\"\"stream\"\"\"\":false}')",
       "Bash(zip -r ../ollama-cors.zip manifest.json background.js icon48.png icon128.png README.md)",
-      "Bash(DATABASE_URL=\"postgresql://drawpro:drawpro@localhost:5432/drawpro\" npx prisma migrate deploy --schema apps/api/prisma/schema.prisma)",
+      "Bash(DATABASE_URL=\"postgresql://drawpro:drawpro@localhost:5432/drawpro\" npx prisma migrate deploy --schema apps/api-ts/prisma/schema.prisma)",
       "Bash(docker network:*)",
       "Bash(DATABASE_URL=\"postgresql://drawpro:drawpro@drawpro-pg:5432/drawpro\" docker compose -f infra/docker-compose.yml up -d api)",
       "Bash(/Users/dimuthu/drawPro/node_modules/.bin/electron -e \"console.log\\(require\\(''electron''\\).app\\)\")",

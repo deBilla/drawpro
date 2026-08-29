@@ -6,7 +6,10 @@ dist-electron/
 .turbo/
 .DS_Store
 *.log
-prisma/migrations/
+
+# Extension build artifacts — rebuild with the zip command in
+# extensions/ollama-cors/README.md
+extensions/*.zip
 
 # Desktop app build artifacts
 apps/desktop/release/

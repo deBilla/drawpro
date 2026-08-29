@@ -50,7 +50,7 @@ function toBuffer(data: Uint8Array): Uint8Array<ArrayBuffer> {
   return copy;
 }
 
-export function bytesToBase64(bytes: Uint8Array): string {
+function bytesToBase64(bytes: Uint8Array): string {
   const chunkSize = 0x8000;
   const chunks: string[] = [];
   for (let i = 0; i < bytes.length; i += chunkSize) {
@@ -59,7 +59,7 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(chunks.join(''));
 }
 
-export function base64ToBytes(b64: string): Uint8Array {
+function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -135,7 +135,7 @@ async function deriveHKDFKey(
 
 // ─── Key pair generation ──────────────────────────────────────────────────────
 
-export async function generateX25519KeyPair(): Promise<{
+async function generateX25519KeyPair(): Promise<{
   publicKey: string;       // base64 of raw 32 bytes
   privateKey: string;      // PEM-wrapped (used for encryptPrivateKey)
   privateKeyBytes: Uint8Array;
@@ -151,7 +151,7 @@ export async function generateX25519KeyPair(): Promise<{
 
 // ─── Salt generation ──────────────────────────────────────────────────────────
 
-export function generateSalt(): string {
+function generateSalt(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(32)));
   return bytesToHex(bytes);
 }
@@ -160,7 +160,7 @@ export function generateSalt(): string {
 
 /** Encrypt the PEM private key with the user's passcode via Argon2id + AES-256-GCM.
  *  Returns a base64 blob: iv(16) | encrypted_pem_with_tag */
-export async function encryptPrivateKey(
+async function encryptPrivateKey(
   privateKeyPem: string,
   passcode: string,
   salt: string,
@@ -333,7 +333,7 @@ export async function decryptPasscodeWithRecoveryCode(
   throw new Error('Recovery code is invalid or has already been used.');
 }
 
-export async function generateRecoveryCodes(
+async function generateRecoveryCodes(
   passcode: string,
   salt: string,
 ): Promise<{ recoveryCodes: string[]; recoveryCodesData: RecoveryCodeData[] }> {

@@ -11,8 +11,8 @@
     "dev": "turbo run dev --filter=!@drawpro/collab",
     "build": "turbo run build --filter=!@drawpro/collab",
     "dev:collab": "turbo run dev",
-    "db:migrate": "cd apps/api && npx prisma migrate dev",
-    "db:seed": "cd apps/api && npx tsx prisma/seed.ts",
+    "db:migrate": "cd apps/api-ts && npx prisma migrate dev",
+    "db:seed": "cd apps/api-ts && npx tsx prisma/seed.ts",
     "docker:up": "docker-compose -f infra/docker-compose.yml up --build"
   },
   "overrides": {

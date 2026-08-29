@@ -104,13 +104,25 @@ export interface CreateWorkspaceInput {
 }
 
 export interface CreateSheetInput {
+  /** '[encrypted]' sentinel when `encryptedData` is supplied. */
   name: string;
+  /**
+   * base64 ECIES blob of `{ name, elements, appState }`, encrypted in the browser.
+   * Required when the user has encryption keys — the server never sees plaintext.
+   */
+  encryptedData?: string | null;
 }
 
 export interface UpdateSheetInput {
+  /** Plaintext fields — only accepted for users without encryption keys. */
   name?: string;
   elements?: unknown[];
   appState?: Record<string, unknown>;
+  /**
+   * base64 ECIES blob of `{ name, elements, appState }`, encrypted in the browser.
+   * Required when the user has encryption keys — the server rejects plaintext then.
+   */
+  encryptedData?: string | null;
 }
 
 export interface SetUserKeysInput {

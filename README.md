@@ -1,8 +1,12 @@
 # DrawPro
 
-**A real-time collaborative drawing app — where your drawings never leave your device unencrypted.**
+**A drawing app — where your drawings never leave your device unencrypted.**
 
-DrawPro is built with Excalidraw, Yjs, Redis, and PostgreSQL, and ships with **end-to-end encryption (E2EE) by default**. Every stroke, shape, and label on your canvas is encrypted on your device before it is ever transmitted or stored. The server holds only ciphertext — it cannot read your drawings, and neither can we.
+DrawPro is built with Excalidraw, Redis, and PostgreSQL, and ships with **end-to-end encryption (E2EE) by default**. Every stroke, shape, and label on your canvas is encrypted on your device before it is ever transmitted or stored. The server holds only ciphertext — it cannot read your drawings, and neither can we.
+
+> **Real-time collaboration is not enabled yet.** A Yjs WebSocket server exists in `apps/collab/`,
+> but no client is wired up to it and it is disabled in Docker Compose. It is planned for a
+> future phase — see [Next Steps](#next-steps).
 
 ---
 
@@ -74,14 +78,11 @@ User clicks "Save"
  Editor collects { name, elements, appState } from Excalidraw
         │
         ▼
- PUT /workspaces/:wid/sheets/:id
-        │
-        ▼
- API: user.publicKey present?
+ user.publicKey present?
         │
         YES
         ▼
- encryptForUser(JSON payload, publicKey)           ← server-side ECIES
+ encryptMessage(JSON payload, publicKey)           ← in the browser
         │
         ├─ Generate ephemeral X25519 key pair
         ├─ X25519 ECDH(ephemeralPrivate, userPublicKey) → shared secret
@@ -90,13 +91,22 @@ User clicks "Save"
         └─ Wire format: ephPub(32) | iv(16) | authTag(16) | ciphertext  →  base64
         │
         ▼
+ PUT /workspaces/:wid/sheets/:id  { encryptedData }   ← only ciphertext crosses the wire
+        │
+        ▼
+ API: stores the blob verbatim. Rejects plaintext name/elements/appState
+      from any account that has keys — it never encrypts anything itself.
+        │
+        ▼
  Prisma: Sheet.encryptedData = base64 blob
          Sheet.name          = "[encrypted]"
          Sheet.elements      = null
          Sheet.appState      = null
 ```
 
-The server performs the encryption **using only your public key** — it cannot reverse the process without your private key, which it never has.
+Encryption happens **in your browser, before the request is sent**. The server holds your
+public key but has no way to read what it stores. Sheet names are sealed the same way at
+creation time, so a new sheet never reaches the server with a readable title.
 
 ---
 
@@ -207,11 +217,13 @@ Every encrypted blob produced by DrawPro uses the same layout:
 | Workspace & sheet names | `[encrypted]` placeholder |
 | Your passcode | Never |
 | Your private key | Never (only the encrypted blob) |
-| Your public key | Yes — required to encrypt data for you |
+| Your public key | Yes — published so others can seal data to you |
 | Your email / account metadata | Yes — standard account management |
-| Yjs real-time collab updates | Plaintext ephemeral updates (in-transit, not persisted to Postgres) |
+| Yjs real-time collab updates | N/A — real-time collab is not enabled (future phase) |
 
-> **Note on real-time collaboration:** Live Yjs updates flowing through the collab server are currently not E2EE. They are ephemeral (not written to Postgres) and exist only in Redis with a 24-hour TTL. Encrypting the Yjs wire protocol is on the roadmap.
+> **Note on real-time collaboration:** Not applicable today — no Yjs client is wired up, so no
+> live updates are transmitted. When collab is picked up in a future phase, encrypting the Yjs
+> wire protocol needs to be designed in from the start rather than retrofitted.
 
 ---
 
@@ -220,8 +232,8 @@ Every encrypted blob produced by DrawPro uses the same layout:
 ```
 drawPro/
 ├── apps/
-│   ├── api/        – Express REST API  (port 3001)
-│   ├── collab/     – Yjs WebSocket collab server  (port 3002)
+│   ├── api-ts/     – Express REST API  (port 3001)
+│   ├── collab/     – Yjs WebSocket collab server  (port 3002) — future phase, disabled
 │   ├── desktop/    – Electron desktop app (CORS-free Ollama bridge)
 │   └── frontend/   – React + Vite + Excalidraw  (port 3000)
 ├── extensions/
@@ -229,8 +241,7 @@ drawPro/
 ├── packages/
 │   └── shared-types/  – TypeScript types shared across apps
 └── infra/
-    ├── docker-compose.yml
-    └── nginx/nginx.conf
+    └── docker-compose.yml        (nginx config lives in apps/frontend/nginx.conf)
 ```
 
 ### Services
@@ -239,9 +250,9 @@ drawPro/
 |----------|------|-------------|
 | frontend | 3000 | React SPA (Vite dev) / Nginx (prod) |
 | api      | 3001 | REST API: auth, workspaces, sheets |
-| collab   | 3002 | Yjs WebSocket server for real-time collab |
+| collab   | 3002 | Yjs WebSocket server — **future phase**, disabled in Docker Compose |
 | postgres | 5432 | Primary datastore (Prisma ORM) |
-| redis    | 6379 | Yjs state persistence + cross-instance pub/sub |
+| redis    | 6379 | Refresh-token store (+ Yjs state when collab is enabled) |
 | minio    | 9000 | Object storage (future: sheet exports) |
 
 ## Local Development
@@ -265,12 +276,12 @@ npm install
 ### 3. Configure environment
 
 ```bash
-cp apps/api/.env.example apps/api/.env
-cp apps/collab/.env.example apps/collab/.env
+cp apps/api-ts/.env.example apps/api-ts/.env
 cp apps/frontend/.env.example apps/frontend/.env
+# cp apps/collab/.env.example apps/collab/.env   # only needed for the collab future phase
 ```
 
-Edit `apps/api/.env` — set `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` to random strings.
+Edit `apps/api-ts/.env` — set `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` to random strings.
 
 ### 4. Run migrations and seed
 
@@ -282,7 +293,8 @@ npm run db:seed      # creates test@example.com / password123
 ### 5. Start all services
 
 ```bash
-npm run dev          # runs turbo → api + collab + frontend in parallel
+npm run dev          # runs turbo → api + frontend in parallel
+                     # collab is excluded; `npm run dev:collab` includes it
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
@@ -300,8 +312,18 @@ npm run docker:up
 
 Nginx listens on port 80 and routes:
 - `/api/*` → api:3001
-- `/collab/*` → collab:3002 (WebSocket)
 - `/*` → frontend:80
+
+The `/collab/*` → collab:3002 WebSocket route is commented out in `apps/frontend/nginx.conf`,
+and the `collab` service sits behind an opt-in Compose profile. Re-enable both together:
+
+```bash
+docker compose -f infra/docker-compose.yml --profile collab up
+```
+
+> nginx resolves `proxy_pass` hostnames at startup, so the location block must stay commented
+> out while the collab container is absent — otherwise the frontend fails to boot with
+> `[emerg] host not found in upstream "collab"`.
 
 ---
 
@@ -312,7 +334,11 @@ Nginx listens on port 80 and routes:
 - Refresh token rotation: old token is invalidated in Redis on every `/auth/refresh` call
 - Token hashes stored as `rt:{userId}:{tokenId}` in Redis with TTL
 
-### Collab (Yjs)
+### Collab (Yjs) — future phase, not active
+> The server below is implemented but has **no client**: there are no Yjs imports in
+> `apps/frontend/src`. It is excluded from `npm run dev`/`build` and gated behind a Compose
+> profile. Recorded here as the design to resume from.
+
 - Each sheet maps to a Yjs room identified by `sheetId`
 - WebSocket server speaks the standard [y-websocket protocol](https://github.com/yjs/y-websocket)
 - Yjs doc state persisted to Redis as binary (`ydoc:{sheetId}`) — 24h TTL, refreshed on writes
@@ -321,7 +347,8 @@ Nginx listens on port 80 and routes:
 ### Persistence
 - Excalidraw elements and appState stored as Postgres JSONB via Prisma's `Json` type
 - REST `PUT /workspaces/:wid/sheets/:id` is the explicit save path (triggered by "Save" button in editor)
-- Yjs/Redis state is the ephemeral real-time layer; it does not auto-sync back to Postgres
+- Yjs/Redis would be the ephemeral real-time layer once collab is enabled; it does not
+  auto-sync back to Postgres. Today, REST is the only save path.
 
 ### Storage (MinIO)
 - Bucket `drawpro` is created on API startup if missing
@@ -359,7 +386,7 @@ Nginx listens on port 80 and routes:
 | DELETE | `/workspaces/:wid/sheets/:id` | delete |
 
 ### Health
-- `GET /health` on both `api` and `collab` → `{ status: "ok" }`
+- `GET /health` on `api` → `{ status: "ok" }` (`collab` exposes one too, when enabled)
 
 ---
 
@@ -440,8 +467,15 @@ npm run dev          # launches Electron loading localhost:3000
 
 - [ ] Supabase or email-based magic link auth
 - [ ] Workspace invitations / member management
-- [ ] Periodic collab→Postgres sync (collab server writes back on room close)
 - [ ] Sheet export to PNG/SVG via MinIO
-- [ ] Cursor presence (awareness state already wired in collab server)
 - [ ] Row-level security policies if migrating to Supabase
-- [ ] E2EE for Yjs real-time collab wire protocol
+
+### Future phase — real-time collaboration
+
+The Yjs server in `apps/collab/` is written but unwired. Picking it up means:
+
+- [ ] Wire a Yjs client into the frontend editor (no Yjs imports exist there today)
+- [ ] Re-enable the `collab` Compose profile and the nginx `/collab/` proxy block
+- [ ] Design E2EE for the Yjs wire protocol *before* wiring up, not after
+- [ ] Periodic collab→Postgres sync (collab server writes back on room close)
+- [ ] Cursor presence (awareness state already wired in collab server)
