@@ -1,28 +1,21 @@
+import { EXCALIFONT_ADVANCE, FALLBACK_ADVANCE } from './font-metrics';
 import { LINE_HEIGHT } from './theme';
 
 /**
- * Advance widths as a fraction of font size, approximating Excalifont.
+ * Text measurement using real Excalifont advance widths, extracted from the
+ * font binary that @excalidraw/excalidraw ships (see tools/generate-font-metrics.ts).
  *
- * We cannot measure real glyphs in Node — there is no canvas — so this table
- * exists to size containers sensibly on first render. Excalidraw re-measures
- * with the real font and re-wraps bound text whenever the container is touched,
- * so small errors self-correct; being roughly right beats a flat average, which
- * makes "Wm" and "il" the same width and produces visibly wrong boxes.
+ * This replaced a hand-estimated width table that was wrong by a mean of 7.7%
+ * of an em, with individual characters off by up to 25% — 't' and 'I' were
+ * classed as narrow at 0.30 when they are nearer 0.55, and 'm' as wide at 0.88
+ * when it is 0.66. That error is what let a label measure 219px, slip under the
+ * 220px wrap threshold, and overflow its box on screen.
+ *
+ * Kerning is not modelled; see the note in font-metrics.ts for why that is
+ * within tolerance.
  */
-const NARROW = new Set([...'ijltfIr.,:;!|\'`()[]{}-']);
-const WIDE = new Set([...'mwMW@%']);
-/** Dashes are nearly a full em and were previously counted as lowercase letters,
- *  which under-measured any label containing one and overflowed its box. */
-const EM_WIDE = new Set([...'—–']);
-const UPPER_OR_DIGIT = /[A-Z0-9]/;
-
 function charWidth(ch: string): number {
-  if (ch === ' ') return 0.3;
-  if (EM_WIDE.has(ch)) return 1.0;
-  if (NARROW.has(ch)) return 0.3;
-  if (WIDE.has(ch)) return 0.88;
-  if (UPPER_OR_DIGIT.test(ch)) return 0.66;
-  return 0.55;
+  return EXCALIFONT_ADVANCE[ch] ?? FALLBACK_ADVANCE;
 }
 
 export function measureLine(line: string, fontSize: number): number {

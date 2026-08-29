@@ -4,7 +4,7 @@
     "type": "text",
     "x": 40,
     "y": -27,
-    "width": 356,
+    "width": 355,
     "height": 35,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -70,9 +70,9 @@
   {
     "id": "el02",
     "type": "text",
-    "x": 87,
+    "x": 86,
     "y": 98,
-    "width": 27,
+    "width": 28,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -103,7 +103,7 @@
   {
     "id": "el03",
     "type": "rectangle",
-    "x": 306,
+    "x": 308,
     "y": 60,
     "width": 260,
     "height": 100,
@@ -142,9 +142,9 @@
   {
     "id": "el04",
     "type": "text",
-    "x": 334,
+    "x": 335,
     "y": 85,
-    "width": 205,
+    "width": 206,
     "height": 50,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -175,10 +175,10 @@
   {
     "id": "el05",
     "type": "rectangle",
-    "x": 656,
-    "y": 50,
-    "width": 260,
-    "height": 120,
+    "x": 658,
+    "y": 40,
+    "width": 220,
+    "height": 140,
     "angle": 0,
     "strokeColor": "#1e1e1e",
     "fillStyle": "solid",
@@ -214,10 +214,10 @@
   {
     "id": "el06",
     "type": "text",
-    "x": 675,
-    "y": 73,
-    "width": 223,
-    "height": 75,
+    "x": 679,
+    "y": 60,
+    "width": 179,
+    "height": 100,
     "angle": 0,
     "strokeColor": "#1e1e1e",
     "fillStyle": "solid",
@@ -232,7 +232,7 @@
     "backgroundColor": "transparent",
     "roundness": null,
     "boundElements": null,
-    "text": "A deliberately long label\nthat has to wrap onto\nseveral lines",
+    "text": "A deliberately long\nlabel that has to\nwrap onto several\nlines",
     "originalText": "A deliberately long label that has to wrap onto several lines",
     "fontSize": 20,
     "fontFamily": 5,
@@ -247,7 +247,7 @@
   {
     "id": "el07",
     "type": "ellipse",
-    "x": 1199,
+    "x": 1174,
     "y": 60,
     "width": 400,
     "height": 100,
@@ -284,9 +284,9 @@
   {
     "id": "el08",
     "type": "text",
-    "x": 1246,
+    "x": 1220,
     "y": 98,
-    "width": 307,
+    "width": 308,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -317,10 +317,10 @@
   {
     "id": "el09",
     "type": "diamond",
-    "x": 1689,
-    "y": 40,
-    "width": 240,
-    "height": 140,
+    "x": 1664,
+    "y": 50,
+    "width": 300,
+    "height": 120,
     "angle": 0,
     "strokeColor": "#1e1e1e",
     "fillStyle": "solid",
@@ -352,9 +352,9 @@
   {
     "id": "el10",
     "type": "text",
-    "x": 1697,
+    "x": 1712,
     "y": 98,
-    "width": 224,
+    "width": 204,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -387,7 +387,7 @@
     "type": "arrow",
     "x": 164,
     "y": 110,
-    "width": 138,
+    "width": 140,
     "height": 0,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -410,11 +410,11 @@
         0
       ],
       [
-        69,
+        70,
         0
       ],
       [
-        138,
+        140,
         0
       ]
     ],
@@ -446,7 +446,7 @@
     "type": "text",
     "x": 211,
     "y": 100,
-    "width": 44,
+    "width": 46,
     "height": 20,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -477,7 +477,7 @@
   {
     "id": "el13",
     "type": "arrow",
-    "x": 570,
+    "x": 572,
     "y": 110,
     "width": 82,
     "height": 0,
@@ -531,9 +531,9 @@
   {
     "id": "el14",
     "type": "arrow",
-    "x": 920,
+    "x": 882,
     "y": 110,
-    "width": 275,
+    "width": 288,
     "height": 0,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -556,11 +556,11 @@
         0
       ],
       [
-        138,
+        144,
         0
       ],
       [
-        275,
+        288,
         0
       ]
     ],
@@ -590,9 +590,9 @@
   {
     "id": "el15",
     "type": "text",
-    "x": 967,
+    "x": 929,
     "y": 90,
-    "width": 181,
+    "width": 194,
     "height": 40,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -623,7 +623,7 @@
   {
     "id": "el16",
     "type": "arrow",
-    "x": 1603,
+    "x": 1578,
     "y": 110,
     "width": 82,
     "height": 0,

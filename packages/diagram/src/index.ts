@@ -36,9 +36,16 @@ function shapePadding(kind: ShapeKind): number {
   return CONTAINER_PADDING;
 }
 
-/** Text measurement is an approximation, so leave headroom. A slightly wide box
- *  reads fine; text touching or crossing the border reads as broken. */
-const WIDTH_SAFETY = 1.06;
+/**
+ * Headroom over the measured width.
+ *
+ * Was 6% when measurement was a hand-estimated guess. Now that widths come from
+ * the font binary, measured error against fontkit's own layout is 0.49% mean —
+ * and always in the over-estimating direction, since the only thing unmodelled
+ * is kerning, which shrinks text. 2% covers glyphs outside the font's table
+ * without inflating every box.
+ */
+const WIDTH_SAFETY = 1.02;
 
 function sizeNode(label: string, kind: ShapeKind): { width: number; height: number } {
   const metrics = measureText(label, FONT_SIZE, MAX_LABEL_WIDTH);

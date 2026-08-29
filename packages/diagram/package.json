@@ -15,5 +15,9 @@
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
     "fractional-indexing": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/fontkit": "^2.0.9",
+    "fontkit": "^2.0.4"
   }
 }

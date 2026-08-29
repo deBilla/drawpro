@@ -4,7 +4,7 @@
     "type": "text",
     "x": 40,
     "y": -27,
-    "width": 344,
+    "width": 371,
     "height": 35,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -70,9 +70,9 @@
   {
     "id": "el02",
     "type": "text",
-    "x": 110,
+    "x": 105,
     "y": 58,
-    "width": 161,
+    "width": 170,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -142,9 +142,9 @@
   {
     "id": "el04",
     "type": "text",
-    "x": 73,
+    "x": 66,
     "y": 236,
-    "width": 235,
+    "width": 249,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -218,9 +218,9 @@
   {
     "id": "el06",
     "type": "text",
-    "x": 119,
+    "x": 122,
     "y": 416,
-    "width": 142,
+    "width": 137,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -294,9 +294,9 @@
   {
     "id": "el08",
     "type": "text",
-    "x": 114,
+    "x": 108,
     "y": 624,
-    "width": 152,
+    "width": 164,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -327,9 +327,9 @@
   {
     "id": "el09",
     "type": "ellipse",
-    "x": 110,
+    "x": 100,
     "y": 784,
-    "width": 160,
+    "width": 180,
     "height": 100,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -360,9 +360,9 @@
   {
     "id": "el10",
     "type": "text",
-    "x": 150,
+    "x": 146,
     "y": 822,
-    "width": 81,
+    "width": 89,
     "height": 25,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -452,9 +452,9 @@
   {
     "id": "el12",
     "type": "text",
-    "x": 115,
+    "x": 110,
     "y": 149,
-    "width": 151,
+    "width": 160,
     "height": 20,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -539,10 +539,10 @@
   {
     "id": "el14",
     "type": "arrow",
-    "x": 159,
-    "y": 477,
-    "width": 48,
-    "height": 126,
+    "x": 157,
+    "y": 476,
+    "width": 52,
+    "height": 127,
     "angle": 0,
     "strokeColor": "#1e1e1e",
     "fillStyle": "solid",
@@ -564,12 +564,12 @@
         0
       ],
       [
-        -45,
-        70
+        -49,
+        71
       ],
       [
         3,
-        126
+        127
       ]
     ],
     "lastCommittedPoint": null,
@@ -598,9 +598,9 @@
   {
     "id": "el15",
     "type": "text",
-    "x": 64,
+    "x": 53,
     "y": 533,
-    "width": 105,
+    "width": 116,
     "height": 20,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -631,10 +631,10 @@
   {
     "id": "el16",
     "type": "arrow",
-    "x": 221,
-    "y": 477,
-    "width": 48,
-    "height": 126,
+    "x": 223,
+    "y": 476,
+    "width": 52,
+    "height": 127,
     "angle": 0,
     "strokeColor": "#1e1e1e",
     "fillStyle": "solid",
@@ -656,12 +656,12 @@
         0
       ],
       [
-        45,
-        70
+        49,
+        71
       ],
       [
         -3,
-        126
+        127
       ]
     ],
     "lastCommittedPoint": null,
@@ -692,7 +692,7 @@
     "type": "text",
     "x": 195,
     "y": 533,
-    "width": 136,
+    "width": 149,
     "height": 20,
     "angle": 0,
     "strokeColor": "#1e1e1e",
@@ -782,9 +782,9 @@
   {
     "id": "el19",
     "type": "text",
-    "x": 154,
+    "x": 150,
     "y": 715,
-    "width": 72,
+    "width": 80,
     "height": 20,
     "angle": 0,
     "strokeColor": "#1e1e1e",
