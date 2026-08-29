@@ -6,6 +6,7 @@
 | [MCP tools](./mcp-tools.md) | What each tool does, and which one to reach for |
 | [Diagram specs](./diagram-specs.md) | The authoring format, and why it has no coordinates |
 | [Privacy](./privacy.md) | What leaves your machine, what doesn't, and what you can turn on |
+| [Tool lifecycle](./tool-lifecycle.md) | Designing, testing, publishing and judging an MCP tool |
 | [Operations](./operations.md) | Deploys, migrations, builds |
 | [Development](./development.md) | Repository layout and tests |
 

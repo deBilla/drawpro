@@ -18,6 +18,7 @@ DrawPro is built with Excalidraw, Redis, and PostgreSQL, and ships with **end-to
 | [MCP tools](./docs/mcp-tools.md) | What each tool does, and which one to reach for |
 | [Diagram specs](./docs/diagram-specs.md) | The authoring format, and why it has no coordinates |
 | [Privacy](./docs/privacy.md) | What leaves your machine, what doesn't, and what you can turn on |
+| [Tool lifecycle](./docs/tool-lifecycle.md) | Designing, testing, publishing and judging an MCP tool |
 | [Operations](./docs/operations.md) | Deploys, migrations, builds |
 | [Development](./docs/development.md) | Repository layout and tests |
 
