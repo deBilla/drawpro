@@ -1,4 +1,4 @@
-import { boxesOverlap } from './geometry';
+import { boxesOverlap, distanceToPolyline } from './geometry';
 import type { DiagramSpec, ExcalidrawElement } from './types';
 
 export interface ValidationIssue {
@@ -102,6 +102,42 @@ export function validateScene(elements: ExcalidrawElement[]): ValidationIssue[] 
             message: `Text ${el.id} names container ${containerId}, but the container does not list it back.`,
           });
         }
+      }
+    }
+  }
+
+  // Both checks below exist because a rendered diagram showed these defects
+  // while every structural assertion passed. Cheap to assert, and they pin the
+  // regressions permanently.
+  for (const el of elements) {
+    const containerId = el.containerId as string | undefined;
+    if (el.type !== 'text' || !containerId) continue;
+    const container = byId.get(containerId);
+    if (!container) continue;
+
+    // Text spilling out of its shape — the symptom of an under-measured label.
+    if (['rectangle', 'ellipse', 'diamond'].includes(container.type)) {
+      if (el.width > container.width - 8) {
+        issues.push({
+          level: 'error',
+          message: `Label on ${container.id} is ${Math.round(el.width)}px wide inside a ${Math.round(container.width)}px shape — it will overflow.`,
+        });
+      }
+    }
+
+    // A label floating away from the arrow it belongs to.
+    if (container.type === 'arrow') {
+      const pts = (container.points as number[][]).map(([dx, dy]) => ({
+        x: (container.x as number) + dx,
+        y: (container.y as number) + dy,
+      }));
+      const centre = { x: el.x + el.width / 2, y: el.y + el.height / 2 };
+      const drift = distanceToPolyline(centre, pts);
+      if (drift > 12) {
+        issues.push({
+          level: 'error',
+          message: `Label on arrow ${container.id} sits ${Math.round(drift)}px off the line.`,
+        });
       }
     }
   }

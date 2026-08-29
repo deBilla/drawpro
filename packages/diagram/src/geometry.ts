@@ -99,3 +99,24 @@ export function polylineMidpoint(points: Point[]): Point {
   }
   return points[points.length - 1];
 }
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (dx === 0 && dy === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+  const t = Math.max(
+    0,
+    Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)),
+  );
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/** Shortest distance from a point to a polyline path. */
+export function distanceToPolyline(p: Point, points: Point[]): number {
+  if (points.length < 2) return points.length ? Math.hypot(p.x - points[0].x, p.y - points[0].y) : 0;
+  let best = Infinity;
+  for (let i = 0; i < points.length - 1; i++) {
+    best = Math.min(best, distanceToSegment(p, points[i], points[i + 1]));
+  }
+  return best;
+}
