@@ -14,8 +14,9 @@
  * `login` derives from the passcode and stores in the OS keychain. The passcode
  * never reaches a tool argument, so it stays out of the model's context.
  */
-import { appendFileSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -75,7 +76,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -132,10 +133,31 @@ function sheetUrl(workspaceId: string, sheetId: string): string {
  * needs the diagram itself. A log you would hesitate to paste into an issue is
  * a log nobody will keep enabled.
  */
+const DEFAULT_LOG = join(homedir(), '.drawpro', 'usage.jsonl');
+
+/**
+ * Where usage is recorded, or undefined for nowhere.
+ *
+ * An explicit DRAWPRO_MCP_LOG always wins. Failing that, opting into telemetry
+ * turns recording on at a default path — because consenting to *send* usage
+ * plainly implies consent to *record* it, recording being the lesser act, and
+ * because the alternative was a trap: telemetry on with no log configured sent
+ * nothing, ever, while looking like it was working.
+ *
+ * The implication does not run the other way. Setting DRAWPRO_MCP_LOG records
+ * locally and shares nothing.
+ */
+function logPath(): string | undefined {
+  const explicit = process.env.DRAWPRO_MCP_LOG;
+  if (explicit) return explicit;
+  return telemetryEnabled() ? DEFAULT_LOG : undefined;
+}
+
 function logCall(entry: Record<string, unknown>): void {
-  const path = process.env.DRAWPRO_MCP_LOG;
+  const path = logPath();
   if (!path) return;
   try {
+    mkdirSync(join(homedir(), '.drawpro'), { recursive: true, mode: 0o700 });
     appendFileSync(path, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n');
   } catch {
     // Never let bookkeeping break a tool call.
@@ -721,9 +743,12 @@ function summariseLog(file: string): LogSummary | null {
  * on one, which is what makes it safe to paste into a bug report.
  */
 function stats(path: string | undefined, asJson: boolean): void {
-  const file = path ?? process.env.DRAWPRO_MCP_LOG;
+  const file = path ?? logPath();
   if (!file) {
-    console.error('Set DRAWPRO_MCP_LOG, or pass a path: drawpro-mcp stats <file>');
+    console.error(
+      'No usage is being recorded. Either set DRAWPRO_MCP_LOG, turn on telemetry\n' +
+        '(which records to ~/.drawpro/usage.jsonl), or pass a path: drawpro-mcp stats <file>',
+    );
     process.exit(2);
   }
 
@@ -758,7 +783,7 @@ function stats(path: string | undefined, asJson: boolean): void {
 
 /** Exactly what a report contains. Nothing else is ever sent. */
 function buildReport(): { installId: string; mcpVersion: string; calls: number; writes: number; tools: unknown[] } | null {
-  const file = process.env.DRAWPRO_MCP_LOG;
+  const file = logPath();
   if (!file) return null;
   const summary = summariseLog(file);
   if (!summary) return null;
@@ -803,8 +828,13 @@ async function telemetry(action: string | undefined): Promise<void> {
 
   if (action === 'on') {
     writeConfig({ telemetry: 'on' });
-    console.log('Telemetry on. Roughly once a day, this is sent:\n');
-    console.log(report ? JSON.stringify(report, null, 2) : '  (nothing yet — set DRAWPRO_MCP_LOG to record usage)');
+    console.log(`Telemetry on. Usage is recorded to ${logPath()}`);
+    console.log('Roughly once a day, an aggregate of it is sent:\n');
+    console.log(
+      report
+        ? JSON.stringify(report, null, 2)
+        : '  (no calls recorded yet — the first report goes out once you have used the tools)',
+    );
     console.log('\nTurn it off any time with: drawpro-mcp telemetry off');
     return;
   }
@@ -812,7 +842,11 @@ async function telemetry(action: string | undefined): Promise<void> {
   console.log(`Telemetry is ${telemetryEnabled() ? 'ON' : 'OFF'}.\n`);
   console.log('If enabled, this is the entire payload — tool counts and timings,');
   console.log('no account, no token, no workspace or sheet ids, nothing drawn:\n');
-  console.log(report ? JSON.stringify(report, null, 2) : '  (nothing recorded yet — set DRAWPRO_MCP_LOG first)');
+  console.log(
+    report
+      ? JSON.stringify(report, null, 2)
+      : `  (no calls recorded yet; recording ${logPath() ? `to ${logPath()}` : 'is off'})`,
+  );
   console.log('\n  drawpro-mcp telemetry on     share it');
   console.log('  drawpro-mcp telemetry off    stop');
   console.log('  drawpro-mcp report           send once now, without turning it on');
@@ -822,7 +856,10 @@ async function telemetry(action: string | undefined): Promise<void> {
 async function reportOnce(): Promise<void> {
   const report = buildReport();
   if (!report) {
-    console.error('Nothing to report. Set DRAWPRO_MCP_LOG to record usage first.');
+    console.error(
+      'Nothing to report — no usage has been recorded. Set DRAWPRO_MCP_LOG, or\n' +
+        'turn on telemetry, which records to ~/.drawpro/usage.jsonl.',
+    );
     process.exit(2);
   }
   console.log('Sending:\n');

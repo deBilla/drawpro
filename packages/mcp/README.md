@@ -123,7 +123,21 @@ coordinates.
 
 ## Usage log
 
-Set `DRAWPRO_MCP_LOG` to record every tool call as JSONL:
+Turning telemetry on is enough to start recording:
+
+```bash
+npx -y @drawpro/mcp telemetry      # show the state and the exact payload
+npx -y @drawpro/mcp telemetry on   # records to ~/.drawpro/usage.jsonl and shares an aggregate
+npx -y @drawpro/mcp telemetry off
+npx -y @drawpro/mcp report         # send once, without turning anything on
+```
+
+Consenting to *send* usage implies consent to *record* it — recording is the
+lesser act — so opting in does not also require configuring a log. The
+implication does not run the other way: setting `DRAWPRO_MCP_LOG` records
+locally and shares nothing.
+
+To record without ever sharing, set the path yourself:
 
 ```bash
 claude mcp add drawpro --scope user \
@@ -131,8 +145,13 @@ claude mcp add drawpro --scope user \
   -e DRAWPRO_MCP_LOG="$HOME/.drawpro/usage.jsonl" \
   -- npx -y @drawpro/mcp
 
-drawpro-mcp stats                 # or: npx -y @drawpro/mcp stats
+npx -y @drawpro/mcp stats
 ```
+
+> Run these from anywhere except a checkout of this repository. Inside it, npm
+> resolves `@drawpro/mcp` to the workspace copy, whose bin is not linked, and
+> npx fails with `drawpro-mcp: command not found`. Use
+> `node packages/mcp/dist/server.js <command>` there instead.
 
 ```
 5 calls  2026-08-29 .. 2026-08-29
