@@ -10,6 +10,37 @@ import { tokensApi } from '../lib/api';
  * The token routes are session-only on the server — a token cannot manage
  * tokens — so this panel is the only place one can be created.
  */
+/**
+ * A shell command with its own copy button.
+ *
+ * The token is interpolated into the command rather than left as a placeholder,
+ * so the whole line can be pasted straight into a terminal. It is the same
+ * secret already shown above this block, so nothing extra is exposed.
+ */
+function CommandBlock({ step, command }: { step: string; command: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    void navigator.clipboard.writeText(command).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+
+  return (
+    <>
+      <div style={styles.stepsLabel}>{step}</div>
+      <div style={styles.codeWrap}>
+        <pre style={styles.code}>{command}</pre>
+        <button style={styles.codeCopyBtn} onClick={copy} title="Copy command">
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+    </>
+  );
+}
+
 export default function ConnectClaudeCode({ onClose }: { onClose: () => void }) {
   const [tokens, setTokens] = useState<ApiTokenSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,13 +135,17 @@ export default function ConnectClaudeCode({ onClose }: { onClose: () => void }) 
               </button>
             </div>
 
-            <div style={styles.stepsLabel}>1. Register the MCP server with Claude Code</div>
-            <pre style={styles.code}>{`claude mcp add drawpro \\
-  -e DRAWPRO_TOKEN="<paste the token above>" \\
-  -- npx -y @drawpro/mcp`}</pre>
+            <CommandBlock
+              step="1. Register the MCP server with Claude Code"
+              command={`claude mcp add drawpro \\
+  -e DRAWPRO_TOKEN="${freshToken}" \\
+  -- npx -y @drawpro/mcp`}
+            />
 
-            <div style={styles.stepsLabel}>2. Unlock reading (optional)</div>
-            <pre style={styles.code}>{`DRAWPRO_TOKEN="<token>" npx -y @drawpro/mcp login`}</pre>
+            <CommandBlock
+              step="2. Unlock reading (optional)"
+              command={`DRAWPRO_TOKEN="${freshToken}" npx -y @drawpro/mcp login`}
+            />
             <p style={styles.footnote}>
               Creating diagrams needs only the token. <strong>Reading</strong> them needs your
               passcode, which unwraps your private key — so run the unlock step in a terminal.
@@ -269,12 +304,30 @@ const styles: Record<string, CSSProperties> = {
     whiteSpace: 'nowrap',
   },
   stepsLabel: { fontSize: 12, fontWeight: 600, color: '#92400e', margin: '14px 0 6px' },
+  codeWrap: { position: 'relative' },
+  codeCopyBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '4px 8px',
+    background: '#334155',
+    color: '#e2e8f0',
+    border: 'none',
+    borderRadius: 5,
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
   code: {
     margin: 0,
     background: '#1e293b',
     color: '#e2e8f0',
     borderRadius: 6,
     padding: '10px 12px',
+    paddingRight: 78,
     fontSize: 12,
     overflowX: 'auto',
     lineHeight: 1.6,
