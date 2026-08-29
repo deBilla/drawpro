@@ -62,7 +62,10 @@ Edits are **all-or-nothing**: if any `find` matches nothing, the sheet is left
 alone. A half-applied edit is worse than none — the result is a state nobody
 expected, and the diff is invisible without re-reading.
 
-Its one geometry change is growing a box whose text no longer fits. Excalidraw
+Its one geometry change is growing a box whose text no longer fits. Replacement
+text is re-wrapped to the width the element already occupied — the column the
+author chose by hand-wrapping the original — so a longer replacement becomes
+more lines rather than one very wide one, and the box grows in height to match. Excalidraw
 regrows a container around text *bound* to it, but hand-drawn diagrams usually
 have text merely sitting on a shape, so longer text would otherwise spill out.
 Boxes are only ever grown, never shrunk, and nothing else moves — reflowing

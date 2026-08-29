@@ -80,7 +80,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.6.3';
+const VERSION = '0.6.4';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -562,7 +562,17 @@ tool(
       // by Excalidraw on load; unbound text is not, so it would keep a stale
       // width and clip.
       const fontSize = (el.fontSize as number) ?? 20;
-      const wrapWidth = (el.containerId as string | null) ? (el.width as number) : 1000;
+      /**
+       * Wrap to the width the element already occupies.
+       *
+       * Unbound text used to be measured at a flat 1000px, which meant a long
+       * replacement came back as one enormous line: taller by almost nothing,
+       * so the box was not grown, and hundreds of pixels wider than the box it
+       * sits in. The author chose that column width by hand-wrapping the
+       * original — keeping it makes the replacement wrap into more lines, which
+       * grows the height, which is what growBoxesToFitText can then act on.
+       */
+      const wrapWidth = Math.max((el.width as number) || 0, 80);
       const metrics = measureText(edit.replace, fontSize, wrapWidth);
       el.width = metrics.width;
       el.height = metrics.height;
