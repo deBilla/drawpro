@@ -107,11 +107,10 @@ export default function ConnectClaudeCode({ onClose }: { onClose: () => void }) 
             <div style={styles.stepsLabel}>1. Register the MCP server with Claude Code</div>
             <pre style={styles.code}>{`claude mcp add drawpro \\
   -e DRAWPRO_TOKEN="<paste the token above>" \\
-  -- npx tsx <path to drawpro>/packages/mcp/src/server.ts`}</pre>
+  -- npx -y @drawpro/mcp`}</pre>
 
             <div style={styles.stepsLabel}>2. Unlock reading (optional)</div>
-            <pre style={styles.code}>{`DRAWPRO_TOKEN="<token>" \\
-  npx tsx <path to drawpro>/packages/client/src/login.ts`}</pre>
+            <pre style={styles.code}>{`DRAWPRO_TOKEN="<token>" npx -y @drawpro/mcp login`}</pre>
             <p style={styles.footnote}>
               Creating diagrams needs only the token. <strong>Reading</strong> them needs your
               passcode, which unwraps your private key — so run the unlock step in a terminal.
