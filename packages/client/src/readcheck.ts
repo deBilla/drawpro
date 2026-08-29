@@ -11,34 +11,11 @@
  * process, and never written to disk, logged, or sent anywhere. The server is
  * only ever asked for ciphertext.
  */
-import { createInterface } from 'node:readline';
 import { DrawProClient } from './api';
 import { decryptPrivateKey } from './crypto';
+import { askHidden } from './prompt';
 
 const BASE_URL = process.env.DRAWPRO_URL ?? 'https://drawpro.kithly.app/api';
-
-const CLEAR_LINE = '\x1b[2K\x1b[200D';
-
-function askHidden(question: string): Promise<string> {
-  return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    const stdin = process.stdin;
-    process.stdout.write(question);
-    // Redraw the line as asterisks so the passcode never reaches the screen
-    // or the terminal's scrollback.
-    const onData = () => {
-      const typed = (rl as unknown as { line: string }).line ?? '';
-      process.stdout.write(CLEAR_LINE + question + '*'.repeat(typed.length));
-    };
-    stdin.on('data', onData);
-    rl.question('', (answer) => {
-      stdin.removeListener('data', onData);
-      rl.close();
-      process.stdout.write('\n');
-      resolve(answer);
-    });
-  });
-}
 
 async function main() {
   const token = process.env.DRAWPRO_TOKEN;

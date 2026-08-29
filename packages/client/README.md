@@ -28,6 +28,18 @@ DRAWPRO_TOKEN=dp_live_... npx tsx packages/client/src/readcheck.ts
 Prompts for the passcode (echo suppressed), unwraps the key, and lists every
 sheet with its decrypted name and element count.
 
+## Read one sheet
+
+```bash
+DRAWPRO_TOKEN=dp_live_... npx tsx packages/client/src/read.ts <sheet url>
+DRAWPRO_TOKEN=dp_live_... npx tsx packages/client/src/read.ts <sheet url> --json scene.json
+```
+
+Prints the diagram as an outline — shapes, and which arrows connect what —
+recovered from the scene's bindings. That is the useful form: raw scene JSON is
+thousands of tokens of coordinates and style, while the outline is what the
+diagram actually says.
+
 ## Self-test
 
 ```bash

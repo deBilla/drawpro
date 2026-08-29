@@ -4,9 +4,14 @@
   "private": true,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "build": "tsc" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
   "dependencies": {
-    "@phi-ag/argon2": "^0.5.19"
+    "@phi-ag/argon2": "^0.5.19",
+    "@drawpro/diagram": "*"
   }
 }
