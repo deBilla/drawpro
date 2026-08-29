@@ -14,7 +14,7 @@
  * `login` derives from the passcode and stores in the OS keychain. The passcode
  * never reaches a tool argument, so it stays out of the model's context.
  */
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -104,11 +104,103 @@ function sheetUrl(workspaceId: string, sheetId: string): string {
   return `${APP_URL}/workspace/${workspaceId}/sheet/${sheetId}`;
 }
 
-const server = new McpServer({ name: 'drawpro', version: '0.0.1' });
+
+// ─── Usage log ───────────────────────────────────────────────────────────────
+
+/**
+ * Append-only JSONL record of tool calls, written only when DRAWPRO_MCP_LOG
+ * names a path.
+ *
+ * Opt-in, and deliberately content-free: shapes and counts, never a label, a
+ * node name, a file's contents, or the token. The question this answers is
+ * "which tools get reached for, and how often do they refuse" — none of which
+ * needs the diagram itself. A log you would hesitate to paste into an issue is
+ * a log nobody will keep enabled.
+ */
+function logCall(entry: Record<string, unknown>): void {
+  const path = process.env.DRAWPRO_MCP_LOG;
+  if (!path) return;
+  try {
+    appendFileSync(path, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n');
+  } catch {
+    // Never let bookkeeping break a tool call.
+  }
+}
+
+/** Phrases the tools use when they decline to act. Counting these is the point:
+ *  a high refusal rate means the descriptions are not steering well. */
+const REFUSALS = [
+  'Nothing was written',
+  'The diagram was not created',
+  'is locked',
+  'Could not read',
+  'has no "elements" array',
+];
+
+type ToolArgs = Record<string, unknown>;
+
+/** Counts worth keeping, derived from arguments without recording their content. */
+function summarise(args: ToolArgs): Record<string, unknown> {
+  const spec = args.spec as { nodes?: unknown[]; edges?: unknown[] } | undefined;
+  const edits = args.edits as unknown[] | undefined;
+  return {
+    workspace_id: args.workspace_id,
+    sheet_id: args.sheet_id,
+    ...(spec ? { nodes: spec.nodes?.length ?? 0, edges: spec.edges?.length ?? 0 } : {}),
+    ...(edits ? { edits: edits.length } : {}),
+    ...(args.file_path ? { from_file: true } : {}),
+  };
+}
+
+type Handler = (args: never) => Promise<{ content: { type: 'text'; text: string }[] }>;
+
+/** Wrap a handler so every call is timed and recorded. */
+function instrument(name: string, handler: Handler): Handler {
+  return (async (args: ToolArgs) => {
+    const started = Date.now();
+    try {
+      const result = await (handler as (a: ToolArgs) => ReturnType<Handler>)(args);
+      const body = result.content.map((c: { text: string }) => c.text).join('\n');
+      logCall({
+        tool: name,
+        ok: true,
+        refused: REFUSALS.some((r) => body.includes(r)),
+        ms: Date.now() - started,
+        args: summarise(args),
+        // Tools word this two ways: "38 elements" and "elements: 38".
+        elements:
+          Number(body.match(/(\d+) elements/)?.[1] ?? body.match(/elements: (\d+)/)?.[1]) ||
+          undefined,
+      });
+      return result;
+    } catch (err) {
+      logCall({
+        tool: name,
+        ok: false,
+        ms: Date.now() - started,
+        args: summarise(args),
+        error: (err as Error).message.slice(0, 200),
+      });
+      throw err;
+    }
+  }) as Handler;
+}
+
+const server = new McpServer({ name: 'drawpro', version: '0.3.1' });
+
+/** server.tool, with the handler wrapped so the call is logged. */
+const tool: typeof server.tool = ((name: string, ...rest: unknown[]) => {
+  const handler = rest.pop() as Handler;
+  return (server.tool as unknown as (...a: unknown[]) => unknown)(
+    name,
+    ...rest,
+    instrument(name, handler),
+  );
+}) as typeof server.tool;
 
 // ─── Read ────────────────────────────────────────────────────────────────────
 
-server.tool(
+tool(
   'list_workspaces',
   'List the DrawPro workspaces this account can access. Workspace names are ' +
     'encrypted at rest and are only readable once the account is unlocked.',
@@ -130,7 +222,7 @@ server.tool(
   },
 );
 
-server.tool(
+tool(
   'list_sheets',
   'List the sheets in a DrawPro workspace, with their decrypted names.',
   { workspace_id: z.string().describe('Workspace id, from list_workspaces') },
@@ -151,7 +243,7 @@ server.tool(
   },
 );
 
-server.tool(
+tool(
   'read_sheet',
   'Read what a DrawPro sheet contains: its shapes, and which arrows connect ' +
     'what. Returns a readable outline rather than raw Excalidraw JSON, which ' +
@@ -203,7 +295,7 @@ const specShape = {
     ),
 };
 
-server.tool(
+tool(
   'validate_spec',
   'Check a diagram spec without creating anything. Use this before writing if ' +
     'the diagram is large or the spec was assembled programmatically.',
@@ -241,7 +333,7 @@ function buildOrExplain(spec: DiagramSpec): BuildOutcome {
   return { ok: true, scene, warnings: warnings.map((w) => w.message) };
 }
 
-server.tool(
+tool(
   'create_diagram',
   'Create a new sheet in DrawPro from a diagram spec. Returns a link to open it.',
   {
@@ -269,7 +361,7 @@ server.tool(
   },
 );
 
-server.tool(
+tool(
   'update_diagram',
   'Replace a sheet’s contents with a new diagram. This overwrites the whole ' +
     'sheet, so read_sheet first if you intend to preserve anything already there.',
@@ -347,7 +439,7 @@ async function login(forget: boolean): Promise<void> {
   console.log('Claude can now read your sheets. The passcode was not stored or sent anywhere.');
 }
 
-server.tool(
+tool(
   'edit_sheet_text',
   'Correct the wording on an existing sheet without redrawing it. Use this for ' +
     'any sheet a person drew: update_diagram regenerates layout from a spec, so ' +
@@ -442,7 +534,7 @@ server.tool(
   },
 );
 
-server.tool(
+tool(
   'import_sheet',
   'Write a local .excalidraw file into a sheet, exactly as it is. Use this when ' +
     'geometry has to change — repositioning, resizing, re-anchoring arrows — ' +
@@ -499,6 +591,72 @@ server.tool(
   },
 );
 
+/**
+ * Summarise the usage log.
+ *
+ *   drawpro-mcp stats [path]
+ *
+ * The numbers worth watching are the refusal rates: a tool that frequently
+ * declines is one whose description is not steering the model well, which is
+ * cheaper to learn from real use than from a synthetic eval.
+ */
+function stats(path: string | undefined): void {
+  const file = path ?? process.env.DRAWPRO_MCP_LOG;
+  if (!file) {
+    console.error('Set DRAWPRO_MCP_LOG, or pass a path: drawpro-mcp stats <file>');
+    process.exit(2);
+  }
+
+  let lines: string[];
+  try {
+    lines = readFileSync(file, 'utf8').split('\n').filter(Boolean);
+  } catch (err) {
+    console.error(`Could not read ${file}: ${(err as Error).message}`);
+    process.exit(2);
+  }
+
+  const rows = lines.flatMap((l) => {
+    try {
+      return [JSON.parse(l) as Record<string, unknown>];
+    } catch {
+      return [];
+    }
+  });
+
+  if (rows.length === 0) {
+    console.log('No calls recorded yet.');
+    return;
+  }
+
+  const byTool = new Map<string, { n: number; refused: number; failed: number; ms: number[] }>();
+  for (const r of rows) {
+    const name = String(r.tool);
+    const acc = byTool.get(name) ?? { n: 0, refused: 0, failed: 0, ms: [] };
+    acc.n++;
+    if (r.refused) acc.refused++;
+    if (r.ok === false) acc.failed++;
+    if (typeof r.ms === 'number') acc.ms.push(r.ms);
+    byTool.set(name, acc);
+  }
+
+  const median = (xs: number[]) =>
+    xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0;
+
+  console.log(`${rows.length} calls  ${String(rows[0].ts).slice(0, 10)} .. ${String(rows[rows.length - 1].ts).slice(0, 10)}\n`);
+  console.log('  tool               calls  refused  failed  median');
+  for (const [name, a] of [...byTool.entries()].sort((x, y) => y[1].n - x[1].n)) {
+    const pct = a.n ? Math.round((a.refused / a.n) * 100) : 0;
+    console.log(
+      `  ${name.padEnd(18)} ${String(a.n).padStart(5)}  ${String(a.refused).padStart(4)} ${String(pct).padStart(3)}%  ${String(a.failed).padStart(6)}  ${String(median(a.ms)).padStart(5)}ms`,
+    );
+  }
+
+  const written = rows
+    .filter((r) => ['create_diagram', 'update_diagram', 'edit_sheet_text', 'import_sheet'].includes(String(r.tool)) && !r.refused && r.ok !== false)
+    .length;
+  console.log(`\n  ${written} successful writes to sheets`);
+}
+
 async function main() {
   const command = process.argv[2];
 
@@ -507,8 +665,15 @@ async function main() {
     return;
   }
 
+  if (command === 'stats') {
+    stats(process.argv[3]);
+    return;
+  }
+
   if (command && command !== 'serve') {
-    console.error(`Unknown command "${command}". Use: drawpro-mcp [serve|login] [--forget]`);
+    console.error(
+      `Unknown command "${command}". Use: drawpro-mcp [serve|login|stats] [--forget]`,
+    );
     process.exit(2);
   }
 

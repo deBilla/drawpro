@@ -121,6 +121,37 @@ Diagram specs describe *what connects to what*. Layout, sizing, text wrapping,
 and arrow binding are derived by `@drawpro/diagram` — a spec never contains
 coordinates.
 
+## Usage log
+
+Set `DRAWPRO_MCP_LOG` to record every tool call as JSONL:
+
+```bash
+claude mcp add drawpro --scope user \
+  -e DRAWPRO_TOKEN="dp_live_..." \
+  -e DRAWPRO_MCP_LOG="$HOME/.drawpro/usage.jsonl" \
+  -- npx -y @drawpro/mcp
+
+drawpro-mcp stats                 # or: npx -y @drawpro/mcp stats
+```
+
+```
+5 calls  2026-08-29 .. 2026-08-29
+
+  tool               calls  refused  failed  median
+  read_sheet             2     0   0%       0    881ms
+  edit_sheet_text        1     1 100%       0     62ms
+```
+
+Opt-in, and content-free by construction: tool name, timing, outcome, and counts
+— never a label, a node name, a file's contents, or the token. A log you would
+hesitate to paste into an issue is one nobody keeps enabled.
+
+The column worth watching is **refused**. A tool that frequently declines is one
+whose description is not steering the model well, and that is cheaper to learn
+from real use than from a synthetic eval — both `edit_sheet_text` and
+`import_sheet` exist because real use found them missing, and no eval written
+beforehand would have predicted either.
+
 ## Tests
 
 ```bash
