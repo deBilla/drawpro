@@ -74,7 +74,24 @@ passcode itself.
 | `read_sheet` | yes | returns a readable outline, not raw scene JSON |
 | `validate_spec` | no | no side effects; check before writing |
 | `create_diagram` | no | returns a link to the new sheet |
-| `update_diagram` | no | replaces the sheet wholesale |
+| `update_diagram` | no | replaces the sheet wholesale — regenerates layout |
+| `edit_sheet_text` | yes | rewrites named text in place, preserving every other element |
+
+### Editing a sheet a person drew
+
+`update_diagram` builds the scene from a spec, so layout is derived and
+hand-placed content cannot survive it: text elements positioned by hand, region
+containers, and unbound annotation arrows all disappear, and the sheet comes
+back as an auto-laid-out graph. Correct content, different diagram.
+
+Use `edit_sheet_text` for those sheets. It reads the scene, rewrites only the
+strings you name, and writes every other element back byte for byte — so
+coordinates, groupings, and annotations are untouched. Edits apply
+all-or-nothing: if any `find` matches nothing, the sheet is left alone rather
+than half-updated.
+
+`update_diagram` remains the right tool for sheets this package generated, where
+regenerating the layout is the point.
 
 `read_sheet` deliberately returns shapes and edges rather than Excalidraw JSON.
 A real sheet's raw scene runs to tens of thousands of characters of coordinates,

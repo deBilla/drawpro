@@ -35,12 +35,13 @@ async function main() {
 
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
-  check('server exposes the six tools', names.length === 6, names.join(', '));
+  check('server exposes the seven tools', names.length === 7, names.join(', '));
   check(
     'tool names are as documented',
     JSON.stringify(names) ===
       JSON.stringify([
         'create_diagram',
+        'edit_sheet_text',
         'list_sheets',
         'list_workspaces',
         'read_sheet',

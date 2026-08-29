@@ -19,6 +19,7 @@ import { validateScene, validateSpec, type ValidationIssue } from './validate';
 import type { DiagramSpec, ExcalidrawElement, ExcalidrawScene, ShapeKind } from './types';
 
 export * from './types';
+export { measureText, measureLine } from './text';
 export { describeScene, formatOutline, type SceneOutline } from './describe';
 export { validateSpec, validateScene, type ValidationIssue } from './validate';
 

@@ -30,6 +30,7 @@ import {
   buildDiagram,
   describeScene,
   formatOutline,
+  measureText,
   validateSpec,
   type DiagramSpec,
   type ExcalidrawElement,
@@ -341,6 +342,87 @@ async function login(forget: boolean): Promise<void> {
   console.log(`Unlocked ${user.email}. Key stored in the ${location}.`);
   console.log('Claude can now read your sheets. The passcode was not stored or sent anywhere.');
 }
+
+server.tool(
+  'edit_sheet_text',
+  'Correct the wording on an existing sheet without redrawing it. Use this for ' +
+    'any sheet a person drew: update_diagram regenerates layout from a spec, so ' +
+    'it discards hand-placed elements, region containers, and unbound ' +
+    'annotations. This rewrites only the text you name and leaves every other ' +
+    'element, and every coordinate, exactly as it was.',
+  {
+    workspace_id: z.string(),
+    sheet_id: z.string(),
+    edits: z
+      .array(
+        z.object({
+          find: z.string().describe("The element's exact current text, as read_sheet reports it"),
+          replace: z.string(),
+        }),
+      )
+      .describe('Applied all-or-nothing: if any find has no match, nothing is written.'),
+  },
+  async ({ workspace_id, sheet_id, edits }) => {
+    const unlocked = await unlockedKey();
+    if ('error' in unlocked) return text(unlocked.error);
+
+    const scene = await api().readSheet(workspace_id, sheet_id, unlocked.key);
+    const elements = scene.elements as ExcalidrawElement[];
+
+    const counts = new Map<string, number>();
+    for (const el of elements) {
+      if (el.type !== 'text') continue;
+      const current = ((el.originalText ?? el.text) as string | undefined)?.trim();
+      if (current === undefined) continue;
+
+      const edit = edits.find((e) => e.find.trim() === current);
+      if (!edit) continue;
+
+      el.text = edit.replace;
+      el.originalText = edit.replace;
+
+      // Keep the box honest about its new contents. Bound text is re-measured
+      // by Excalidraw on load; unbound text is not, so it would keep a stale
+      // width and clip.
+      const metrics = measureText(edit.replace, (el.fontSize as number) ?? 20, 1000);
+      el.width = metrics.width;
+      el.height = metrics.height;
+
+      el.version = ((el.version as number) ?? 1) + 1;
+      el.versionNonce = Math.floor(Math.random() * 2 ** 31);
+      el.updated = Date.now();
+
+      counts.set(edit.find, (counts.get(edit.find) ?? 0) + 1);
+    }
+
+    // Fail closed. A partially applied edit is worse than none: the sheet ends
+    // up in a state neither the user nor the model expected, and the diff is
+    // invisible without re-reading.
+    const missed = edits.filter((e) => !counts.has(e.find));
+    if (missed.length > 0) {
+      return text(
+        'Nothing was written. These strings matched no text element:\n' +
+          missed.map((e) => `  ${JSON.stringify(e.find)}`).join('\n') +
+          '\n\nRun read_sheet and copy the text exactly as it appears there.',
+      );
+    }
+
+    const user = await currentUser();
+    await api().updateSheet(
+      workspace_id,
+      sheet_id,
+      { name: scene.name, elements, appState: scene.appState },
+      user.publicKey,
+    );
+
+    const applied = [...counts.entries()]
+      .map(([find, n]) => `  ${JSON.stringify(find)} -> ${n} element${n === 1 ? '' : 's'}`)
+      .join('\n');
+    return text(
+      `Updated "${scene.name}". ${elements.length} elements preserved; only the text below changed.\n${applied}\n${sheetUrl(workspace_id, sheet_id)}`,
+    );
+  },
+);
 
 async function main() {
   const command = process.argv[2];
