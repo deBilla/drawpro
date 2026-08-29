@@ -1,4 +1,21 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: drawpro
+      POSTGRES_DB: drawpro
+      # Only read on first init; the volume below is already initialised, so this
+      # is a no-op today. The API gets the real credential via DATABASE_URL.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drawpro}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U drawpro -d drawpro']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -33,6 +50,8 @@ services:
       MINIO_PORT: 9000
       FRONTEND_URL: http://localhost:3010
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -64,5 +83,6 @@ services:
       - api
 
 volumes:
+  postgres_data:
   redis_data:
   minio_data:
