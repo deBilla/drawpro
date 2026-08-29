@@ -1,0 +1,7 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "drawpro",
+  "version": "0.1.0",
+  "description": "Read and create diagrams in a DrawPro account from Claude Code.",
+  "author": { "name": "deBilla" }
+}

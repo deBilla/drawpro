@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "drawpro": {
+      "command": "npx",
+      "args": ["-y", "@drawpro/mcp"]
+    }
+  }
+}
