@@ -76,6 +76,7 @@ passcode itself.
 | `create_diagram` | no | returns a link to the new sheet |
 | `update_diagram` | no | replaces the sheet wholesale — regenerates layout |
 | `edit_sheet_text` | yes | rewrites named text in place, preserving every other element |
+| `import_sheet` | no | writes a local .excalidraw file into a sheet, coordinates verbatim |
 
 ### Editing a sheet a person drew
 
@@ -97,8 +98,16 @@ and nothing else moves — reflowing neighbours would be the wholesale rewrite
 this tool exists to avoid. Any box it grows is named in the result, so overlap
 with a neighbour is easy to spot and one drag to fix.
 
-It cannot add elements. A correction that needs a new box or a new annotation
-line is still a manual edit.
+It cannot add elements or move anything. A correction that needs a new box, a
+repositioned column, or a re-anchored arrow is a geometry change, and no spec or
+text edit can express one.
+
+`import_sheet` covers that case. Point it at a local `.excalidraw` file and it
+writes the scene in verbatim — every coordinate exactly as in the file. Because
+the server runs on your machine it can simply read the file, so a geometry pass
+can be done with a real editor, or by a model editing the file directly, and
+then pushed without a clipboard round trip. The file's contents go into the
+encrypted blob, never into the model's context.
 
 `update_diagram` remains the right tool for sheets this package generated, where
 regenerating the layout is the point.

@@ -14,6 +14,8 @@
  * `login` derives from the passcode and stores in the OS keychain. The passcode
  * never reaches a tool argument, so it stays out of the model's context.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -32,6 +34,7 @@ import {
   formatOutline,
   growBoxesToFitText,
   measureText,
+  validateScene,
   validateSpec,
   type DiagramSpec,
   type ExcalidrawElement,
@@ -435,6 +438,63 @@ server.tool(
       : '';
     return text(
       `Updated "${scene.name}". ${elements.length} elements preserved; only the text below changed.\n${applied}${grewNote}\n${sheetUrl(workspace_id, sheet_id)}`,
+    );
+  },
+);
+
+server.tool(
+  'import_sheet',
+  'Write a local .excalidraw file into a sheet, exactly as it is. Use this when ' +
+    'geometry has to change — repositioning, resizing, re-anchoring arrows — ' +
+    'which no spec can express and edit_sheet_text will not touch. Every ' +
+    'coordinate in the file is preserved verbatim.',
+  {
+    workspace_id: z.string(),
+    file_path: z.string().describe('Path to a .excalidraw file on this machine'),
+    name: z.string().describe('Sheet name'),
+    sheet_id: z
+      .string()
+      .optional()
+      .describe('Omit to create a new sheet; supply it to replace an existing one'),
+  },
+  async ({ workspace_id, file_path, name, sheet_id }) => {
+    let parsed: { elements?: unknown; appState?: unknown };
+    try {
+      parsed = JSON.parse(readFileSync(resolve(file_path), 'utf8')) as typeof parsed;
+    } catch (err) {
+      return text(`Could not read ${file_path}: ${(err as Error).message}`);
+    }
+
+    const elements = parsed.elements;
+    if (!Array.isArray(elements) || elements.length === 0) {
+      return text(`${file_path} has no "elements" array — is it an .excalidraw file?`);
+    }
+
+    // Reported, never enforced. This is a person's own drawing: overlapping
+    // boxes and unbound arrows are their business, and refusing the import
+    // would make the tool useless for exactly the hand-drawn sheets it exists
+    // to carry.
+    const issues = validateScene(elements as ExcalidrawElement[]);
+    const noted = issues.length
+      ? `\n\n${issues.length} thing(s) worth a look (imported anyway):\n` +
+        issues.slice(0, 5).map((i) => `  ${i.level}: ${i.message}`).join('\n')
+      : '';
+
+    const user = await currentUser();
+    const payload = {
+      name,
+      elements: elements as unknown[],
+      appState: (parsed.appState as Record<string, unknown>) ?? {},
+    };
+
+    const sheet = sheet_id
+      ? await api().updateSheet(workspace_id, sheet_id, payload, user.publicKey)
+      : await api().createSheet(workspace_id, payload, user.publicKey);
+
+    const id = sheet_id ?? sheet.id;
+    return text(
+      `${sheet_id ? 'Replaced' : 'Created'} "${name}" from ${file_path} — ` +
+        `${elements.length} elements, every coordinate as in the file.\n${sheetUrl(workspace_id, id)}${noted}`,
     );
   },
 );
