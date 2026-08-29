@@ -1,0 +1,285 @@
+#!/usr/bin/env node
+/**
+ * DrawPro MCP server — local stdio.
+ *
+ * Local by necessity, not preference. DrawPro is end-to-end encrypted: content
+ * is sealed in the client and the server stores only ciphertext. A hosted
+ * remote MCP server would have to receive plaintext diagrams, which would undo
+ * that property entirely. Running here means encryption and decryption stay on
+ * this machine, exactly as they do in the browser.
+ *
+ *   claude mcp add drawpro -e DRAWPRO_TOKEN=dp_live_... -- npx -y @drawpro/mcp
+ *
+ * Reading additionally needs the account private key, which an interactive
+ * `login` derives from the passcode and stores in the OS keychain. The passcode
+ * never reaches a tool argument, so it stays out of the model's context.
+ */
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
+import { DrawProClient, loadKey, type DrawProUser } from '@drawpro/client';
+import {
+  buildDiagram,
+  describeScene,
+  formatOutline,
+  validateSpec,
+  type DiagramSpec,
+  type ExcalidrawElement,
+  type ExcalidrawScene,
+} from '@drawpro/diagram';
+
+const BASE_URL = process.env.DRAWPRO_URL ?? 'https://drawpro.kithly.app/api';
+const APP_URL = BASE_URL.replace(/\/api\/?$/, '');
+
+function requireToken(): string {
+  const token = process.env.DRAWPRO_TOKEN;
+  if (!token) {
+    throw new Error(
+      'DRAWPRO_TOKEN is not set. Create a token in DrawPro under "Connect to Claude Code".',
+    );
+  }
+  return token;
+}
+
+const client = new DrawProClient(BASE_URL, requireToken());
+
+let cachedUser: DrawProUser | null = null;
+async function currentUser(): Promise<DrawProUser> {
+  if (!cachedUser) cachedUser = await client.me();
+  return cachedUser;
+}
+
+/**
+ * The private key, or a message explaining how to get one. Returned rather than
+ * thrown so the model can relay an actionable instruction instead of an error.
+ */
+async function unlockedKey(): Promise<{ key: Uint8Array } | { error: string }> {
+  const user = await currentUser();
+  if (!user.encryptedPrivateKey) {
+    return { error: 'This account has no encryption keys set up.' };
+  }
+  const key = loadKey(user.email);
+  if (!key) {
+    return {
+      error:
+        `This account is locked. Run \`DRAWPRO_TOKEN=... npx tsx packages/client/src/login.ts\` ` +
+        `in a terminal to unlock it — it prompts for the passcode and stores the derived key ` +
+        `in the OS keychain. Ask the user to do this; never ask them for the passcode here.`,
+    };
+  }
+  return { key };
+}
+
+function text(body: string) {
+  return { content: [{ type: 'text' as const, text: body }] };
+}
+
+function sheetUrl(workspaceId: string, sheetId: string): string {
+  return `${APP_URL}/workspace/${workspaceId}/sheet/${sheetId}`;
+}
+
+const server = new McpServer({ name: 'drawpro', version: '0.0.1' });
+
+// ─── Read ────────────────────────────────────────────────────────────────────
+
+server.tool(
+  'list_workspaces',
+  'List the DrawPro workspaces this account can access. Workspace names are ' +
+    'encrypted at rest and are only readable once the account is unlocked.',
+  {},
+  async () => {
+    const workspaces = await client.listWorkspaces();
+    const unlocked = await unlockedKey();
+
+    const rows = await Promise.all(
+      workspaces.map(async (ws) => {
+        const name =
+          'key' in unlocked ? await client.readName(ws.encryptedName, unlocked.key) : null;
+        return `${ws.id}  ${name ?? ws.name}  (${ws.sheetsCount ?? '?'} sheets)`;
+      }),
+    );
+
+    const note = 'error' in unlocked ? `\n\nNames are encrypted. ${unlocked.error}` : '';
+    return text(rows.join('\n') + note);
+  },
+);
+
+server.tool(
+  'list_sheets',
+  'List the sheets in a DrawPro workspace, with their decrypted names.',
+  { workspace_id: z.string().describe('Workspace id, from list_workspaces') },
+  async ({ workspace_id }) => {
+    const sheets = await client.listSheets(workspace_id);
+    const unlocked = await unlockedKey();
+
+    const rows = await Promise.all(
+      sheets.map(async (s) => {
+        const name =
+          'key' in unlocked ? await client.readName(s.encryptedData, unlocked.key) : null;
+        return `${s.id}  ${name ?? s.name}  updated ${s.updatedAt}`;
+      }),
+    );
+
+    const note = 'error' in unlocked ? `\n\nNames are encrypted. ${unlocked.error}` : '';
+    return text((rows.join('\n') || '(no sheets)') + note);
+  },
+);
+
+server.tool(
+  'read_sheet',
+  'Read what a DrawPro sheet contains: its shapes, and which arrows connect ' +
+    'what. Returns a readable outline rather than raw Excalidraw JSON, which ' +
+    'is mostly coordinates and style.',
+  {
+    workspace_id: z.string(),
+    sheet_id: z.string(),
+  },
+  async ({ workspace_id, sheet_id }) => {
+    const unlocked = await unlockedKey();
+    if ('error' in unlocked) return text(unlocked.error);
+
+    const scene = await client.readSheet(workspace_id, sheet_id, unlocked.key);
+    const outline = describeScene(scene.elements as ExcalidrawElement[]);
+    return text(
+      `sheet: ${scene.name}\nelements: ${scene.elements.length}\n\n${formatOutline(outline)}`,
+    );
+  },
+);
+
+// ─── Write ───────────────────────────────────────────────────────────────────
+
+const specShape = {
+  spec: z
+    .object({
+      title: z.string().optional(),
+      direction: z.enum(['TB', 'BT', 'LR', 'RL']).optional(),
+      nodes: z.array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          shape: z.enum(['rectangle', 'ellipse', 'diamond']).optional(),
+          accent: z.enum(['blue', 'green', 'yellow', 'red', 'violet', 'grey', 'none']).optional(),
+        }),
+      ),
+      edges: z.array(
+        z.object({
+          from: z.string(),
+          to: z.string(),
+          label: z.string().optional(),
+          style: z.enum(['solid', 'dashed', 'dotted']).optional(),
+          arrowhead: z.boolean().optional(),
+        }),
+      ),
+    })
+    .describe(
+      'What connects to what. Layout, sizing, text wrapping, and arrow binding ' +
+        'are derived — never supply coordinates.',
+    ),
+};
+
+server.tool(
+  'validate_spec',
+  'Check a diagram spec without creating anything. Use this before writing if ' +
+    'the diagram is large or the spec was assembled programmatically.',
+  specShape,
+  async ({ spec }) => {
+    const issues = validateSpec(spec as DiagramSpec);
+    if (issues.length === 0) return text('Spec is valid.');
+    return text(issues.map((i) => `${i.level}: ${i.message}`).join('\n'));
+  },
+);
+
+/**
+ * Shared build step, so create and update report problems identically.
+ *
+ * Explicitly discriminated: inferring the union from object literals leaves
+ * every key optional on both branches, and `'error' in built` then fails to
+ * narrow.
+ */
+type BuildOutcome =
+  | { ok: false; error: string }
+  | { ok: true; scene: ExcalidrawScene; warnings: string[] };
+
+function buildOrExplain(spec: DiagramSpec): BuildOutcome {
+  const { scene, issues } = buildDiagram(spec);
+  const errors = issues.filter((i) => i.level === 'error');
+  if (errors.length > 0) {
+    return {
+      ok: false,
+      error:
+        'The diagram was not created. Fix the spec and try again:\n' +
+        errors.map((i) => `  error: ${i.message}`).join('\n'),
+    };
+  }
+  const warnings = issues.filter((i) => i.level === 'warning');
+  return { ok: true, scene, warnings: warnings.map((w) => w.message) };
+}
+
+server.tool(
+  'create_diagram',
+  'Create a new sheet in DrawPro from a diagram spec. Returns a link to open it.',
+  {
+    workspace_id: z.string().describe('Workspace id, from list_workspaces'),
+    name: z.string().describe('Sheet name, shown in the dashboard'),
+    ...specShape,
+  },
+  async ({ workspace_id, name, spec }) => {
+    const built = buildOrExplain(spec as DiagramSpec);
+    if (!built.ok) return text(built.error);
+
+    const user = await currentUser();
+    const sheet = await client.createSheet(
+      workspace_id,
+      { name, elements: built.scene.elements, appState: built.scene.appState },
+      user.publicKey,
+    );
+
+    const warned = built.warnings.length
+      ? `\n\nwarnings:\n${built.warnings.map((w) => `  ${w}`).join('\n')}`
+      : '';
+    return text(
+      `Created "${name}" with ${built.scene.elements.length} elements.\n${sheetUrl(workspace_id, sheet.id)}${warned}`,
+    );
+  },
+);
+
+server.tool(
+  'update_diagram',
+  'Replace a sheet’s contents with a new diagram. This overwrites the whole ' +
+    'sheet, so read_sheet first if you intend to preserve anything already there.',
+  {
+    workspace_id: z.string(),
+    sheet_id: z.string(),
+    name: z.string().describe('Sheet name; the existing name is inside the encrypted blob'),
+    ...specShape,
+  },
+  async ({ workspace_id, sheet_id, name, spec }) => {
+    const built = buildOrExplain(spec as DiagramSpec);
+    if (!built.ok) return text(built.error);
+
+    const user = await currentUser();
+    await client.updateSheet(
+      workspace_id,
+      sheet_id,
+      { name, elements: built.scene.elements, appState: built.scene.appState },
+      user.publicKey,
+    );
+
+    const warned = built.warnings.length
+      ? `\n\nwarnings:\n${built.warnings.map((w) => `  ${w}`).join('\n')}`
+      : '';
+    return text(
+      `Updated "${name}" to ${built.scene.elements.length} elements.\n${sheetUrl(workspace_id, sheet_id)}${warned}`,
+    );
+  },
+);
+
+async function main() {
+  await server.connect(new StdioServerTransport());
+}
+
+main().catch((err) => {
+  // stderr only — stdout is the protocol channel.
+  console.error('[drawpro-mcp]', err.message);
+  process.exit(1);
+});

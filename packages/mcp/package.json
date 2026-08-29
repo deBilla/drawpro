@@ -1,0 +1,18 @@
+{
+  "name": "@drawpro/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/server.ts",
+  "bin": {
+    "drawpro-mcp": "./src/server.ts"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@drawpro/client": "*",
+    "@drawpro/diagram": "*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^3.23.8"
+  }
+}

@@ -104,11 +104,19 @@ export default function ConnectClaudeCode({ onClose }: { onClose: () => void }) 
               </button>
             </div>
 
-            <div style={styles.stepsLabel}>Then, in your terminal:</div>
-            <pre style={styles.code}>{`export DRAWPRO_TOKEN="<paste the token>"
-curl -H "Authorization: Bearer $DRAWPRO_TOKEN" ${window.location.origin}/api/workspaces`}</pre>
+            <div style={styles.stepsLabel}>1. Register the MCP server with Claude Code</div>
+            <pre style={styles.code}>{`claude mcp add drawpro \\
+  -e DRAWPRO_TOKEN="<paste the token above>" \\
+  -- npx tsx <path to drawpro>/packages/mcp/src/server.ts`}</pre>
+
+            <div style={styles.stepsLabel}>2. Unlock reading (optional)</div>
+            <pre style={styles.code}>{`DRAWPRO_TOKEN="<token>" \\
+  npx tsx <path to drawpro>/packages/client/src/login.ts`}</pre>
             <p style={styles.footnote}>
-              A JSON list of your workspaces means the token is working.
+              Creating diagrams needs only the token. <strong>Reading</strong> them needs your
+              passcode, which unwraps your private key — so run the unlock step in a terminal.
+              It stores the derived key in your OS keychain and never sends the passcode
+              anywhere. Claude will never ask you for it.
             </p>
             <button style={styles.doneBtn} onClick={() => setFreshToken(null)}>
               I&apos;ve saved it
