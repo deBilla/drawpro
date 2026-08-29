@@ -80,7 +80,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.6.1';
+const VERSION = '0.6.2';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -510,7 +510,13 @@ tool(
     edits: z
       .array(
         z.object({
-          find: z.string().describe("The element's exact current text, as read_sheet reports it"),
+          find: z
+            .string()
+            .describe(
+              'The element\'s current text, as read_sheet reports it. Whitespace is ' +
+                'matched loosely, so the flattened single-line form read_sheet prints ' +
+                'works even when the element itself contains line breaks.',
+            ),
           replace: z.string(),
         }),
       )
@@ -523,6 +529,18 @@ tool(
     const scene = await api().readSheet(workspace_id, sheet_id, unlocked.key);
     const elements = scene.elements as ExcalidrawElement[];
 
+    /**
+     * Collapse every run of whitespace to one space.
+     *
+     * read_sheet flattens newlines so an outline stays readable on one line per
+     * element, which made its output unusable as `find` for any multi-line text
+     * — while the tool's own instructions say to copy the text from there.
+     * Matching on collapsed whitespace closes that gap: identifying *which*
+     * element to change should not require reproducing its exact bytes,
+     * including line breaks that are invisible in every rendering of it.
+     */
+    const collapse = (t: string) => t.replace(/\s+/g, ' ').trim();
+
     const counts = new Map<string, number>();
     const changedTextIds = new Set<string>();
     for (const el of elements) {
@@ -530,7 +548,11 @@ tool(
       const current = ((el.originalText ?? el.text) as string | undefined)?.trim();
       if (current === undefined) continue;
 
-      const edit = edits.find((e) => e.find.trim() === current);
+      // Exact first, so a caller who does have the real bytes keeps precise
+      // control; collapsed only as a fallback.
+      const edit =
+        edits.find((e) => e.find.trim() === current) ??
+        edits.find((e) => collapse(e.find) === collapse(current));
       if (!edit) continue;
 
       el.text = edit.replace;
@@ -565,7 +587,8 @@ tool(
       return text(
         'Nothing was written. These strings matched no text element:\n' +
           missed.map((e) => `  ${JSON.stringify(e.find)}`).join('\n') +
-          '\n\nRun read_sheet and copy the text exactly as it appears there.',
+          '\n\nRun read_sheet and copy the text as it appears there. Line breaks and ' +
+            'repeated spaces do not need to match — only the words do.',
       );
     }
 

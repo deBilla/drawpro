@@ -48,7 +48,16 @@ back untouched.
 edit_sheet_text(workspace_id, sheet_id, edits: [{ find, replace }])
 ```
 
-`find` must match an element's current text exactly, as `read_sheet` reports it.
+`find` matches with **whitespace collapsed**, so the flattened single-line form
+`read_sheet` prints works even for an element that contains line breaks. Strip
+the leading `[rectangle]` marker first — that is outline formatting, not part of
+the text.
+
+This matters because `read_sheet` renders newlines as spaces to keep the outline
+one line per element. Requiring byte-exact `find` therefore made its own output
+unusable for any multi-line text, while the instructions said to copy from
+there. Identifying *which* element to change should not require reproducing line
+breaks that are invisible in every rendering of it.
 Edits are **all-or-nothing**: if any `find` matches nothing, the sheet is left
 alone. A half-applied edit is worse than none — the result is a state nobody
 expected, and the diff is invisible without re-reading.
