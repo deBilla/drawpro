@@ -85,7 +85,14 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
             cd ~/drawpro-deployment
-            docker compose -f infra/docker-compose.yml down
+            # No `down` first. `up -d` recreates only the services whose image
+            # or config actually changed, so downtime is a container restart
+            # rather than the whole stack being stopped for the length of the
+            # deploy. `down` also stopped Postgres on every push, which is both
+            # unnecessary and the reason users saw 502s mid-deploy.
+            # Deliberately not --remove-orphans: if a service ever falls out of
+            # this file again, as postgres once had, that flag would delete its
+            # container on the next deploy.
             docker compose -f infra/docker-compose.yml up -d
           '
 
