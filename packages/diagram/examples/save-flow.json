@@ -1,0 +1,18 @@
+{
+  "title": "DrawPro save flow (E2EE)",
+  "direction": "TB",
+  "nodes": [
+    { "id": "editor", "label": "Excalidraw editor", "accent": "blue" },
+    { "id": "store", "label": "useSheetStore.saveSheet" },
+    { "id": "crypt", "label": "has publicKey?", "shape": "diamond", "accent": "yellow" },
+    { "id": "api", "label": "PUT /sheets/:id", "accent": "green" },
+    { "id": "db", "label": "Postgres", "shape": "ellipse", "accent": "grey" }
+  ],
+  "edges": [
+    { "from": "editor", "to": "store", "label": "elements + appState" },
+    { "from": "store", "to": "crypt" },
+    { "from": "crypt", "to": "api", "label": "encryptedData" },
+    { "from": "crypt", "to": "api", "label": "plaintext (no keys)", "style": "dashed" },
+    { "from": "api", "to": "db", "label": "store blob" }
+  ]
+}
