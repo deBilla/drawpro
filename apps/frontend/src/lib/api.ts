@@ -8,6 +8,9 @@ import type {
   CreateSheetInput,
   UpdateSheetInput,
   SetUserKeysInput,
+  ApiTokenSummary,
+  CreatedApiToken,
+  CreateApiTokenInput,
   User,
   ApiResponse,
 } from '@drawpro/shared-types';
@@ -112,6 +115,22 @@ export const workspacesApi = {
 };
 
 // ─── Sheets ──────────────────────────────────────────────────────────────────
+
+/**
+ * Personal API tokens — the credential the DrawPro CLI and Claude Code use.
+ * These routes are session-only by design: a token cannot manage tokens, so
+ * every call here relies on the browser's auth cookie.
+ */
+export const tokensApi = {
+  list: () =>
+    apiClient.get<ApiResponse<ApiTokenSummary[]>>('/auth/tokens').then((r) => r.data.data),
+
+  /** The raw token is present on this response only, and never retrievable again. */
+  create: (body: CreateApiTokenInput) =>
+    apiClient.post<ApiResponse<CreatedApiToken>>('/auth/tokens', body).then((r) => r.data.data),
+
+  revoke: (id: string) => apiClient.delete(`/auth/tokens/${id}`),
+};
 
 export const sheetsApi = {
   list: (workspaceId: string) =>

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, FileText, LogOut, FolderOpen, Lock } from 'lucide-react';
+import { Plus, Trash2, FileText, LogOut, FolderOpen, Lock, Terminal } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
 import { authApi } from '../lib/api';
+import ConnectClaudeCode from '../components/ConnectClaudeCode';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const [showConnect, setShowConnect] = useState(false);
   const { user, logout, cachedPrivateKey } = useAuthStore();
   const {
     workspaces,
@@ -128,7 +130,18 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+
+        <button
+          style={styles.connectBtn}
+          onClick={() => setShowConnect(true)}
+          title="Create a token so Claude Code can edit your sheets"
+        >
+          <Terminal size={15} />
+          Connect to Claude Code
+        </button>
       </aside>
+
+      {showConnect && <ConnectClaudeCode onClose={() => setShowConnect(false)} />}
 
       {/* Main */}
       <main style={styles.main}>
@@ -233,5 +246,6 @@ const styles: Record<string, React.CSSProperties> = {
   hint: { color: '#94a3b8', fontSize: 14 },
   inlineForm: { display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' },
   inlineInput: { flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #ddd', fontSize: 14 },
+  connectBtn: { display: 'flex', alignItems: 'center', gap: 8, width: 'calc(100% - 24px)', margin: '0 12px 12px', padding: '9px 10px', background: 'none', border: '1px solid #334155', borderRadius: 8, color: '#cbd5e1', fontSize: 13, fontWeight: 500, cursor: 'pointer', textAlign: 'left' },
   smallBtn: { padding: '6px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' },
 };
