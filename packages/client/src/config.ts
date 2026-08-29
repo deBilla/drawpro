@@ -18,6 +18,8 @@ export interface Config {
   installId?: string;
   /** ISO timestamp of the last successful report, to keep sends to once a day. */
   lastReportAt?: string;
+  /** Personal API token, when not supplied through the environment. */
+  token?: string;
 }
 
 const DIR = join(homedir(), '.drawpro');
@@ -49,4 +51,16 @@ export function installId(): string {
  *  silence, and no prompt that defaults to yes. */
 export function telemetryEnabled(): boolean {
   return readConfig().telemetry === 'on';
+}
+
+/**
+ * The token to authenticate with, or undefined.
+ *
+ * The environment wins, so an existing `claude mcp add -e DRAWPRO_TOKEN=...`
+ * keeps working and CI can override. Otherwise it comes from this config, which
+ * is what makes rotation a single command instead of removing and re-adding the
+ * MCP server — Claude Code has no way to edit an existing server's environment.
+ */
+export function resolveToken(): string | undefined {
+  return process.env.DRAWPRO_TOKEN || readConfig().token;
 }

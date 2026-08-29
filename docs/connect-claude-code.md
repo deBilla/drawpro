@@ -13,10 +13,26 @@ Treat it like a password. Anyone holding it can act as you.
 ## 2. Register the server
 
 ```bash
+claude mcp add drawpro --scope user -- npx -y @drawpro/mcp
+npx -y @drawpro/mcp auth dp_live_...
+```
+
+The token is verified against the API before it is saved, so a bad paste fails
+immediately rather than becoming a puzzling 401 later. It is stored in a `0600`
+file at `~/.drawpro/config.json`, next to the key material.
+
+You can supply it through the environment instead, which takes precedence:
+
+```bash
 claude mcp add drawpro --scope user \
   -e DRAWPRO_TOKEN="dp_live_..." \
   -- npx -y @drawpro/mcp
 ```
+
+Prefer the `auth` form. Claude Code can add and remove a server but not edit
+one, so a token set through `-e` can only be changed by removing and re-adding
+the whole server — and it then lives in `~/.claude.json` alongside unrelated
+configuration.
 
 Restart Claude Code afterwards. The server runs as a subprocess started with
 each session, so a restart is also how you pick up a new version.
@@ -26,6 +42,28 @@ loads the server only in the directory you ran the command in — and diagrammin
 is not a property of one repository. Avoid `--scope project`: it writes
 `.mcp.json` into whichever repo you are standing in, token included, where it
 invites being committed.
+
+## Rotating a token
+
+```bash
+npx -y @drawpro/mcp auth dp_live_<new>    # replaces the stored one
+npx -y @drawpro/mcp auth                  # show which is in use
+npx -y @drawpro/mcp auth --forget         # clear it
+```
+
+Revoke the old token in the DrawPro panel afterwards. Restart Claude Code so the
+server picks up the change.
+
+Rotating does not affect reading: the unwrapped key is stored per account, not
+per token, so you do not need to `login` again.
+
+If the token came from `-e DRAWPRO_TOKEN`, `auth` will tell you the environment
+takes precedence. Rotate that one with:
+
+```bash
+claude mcp remove drawpro
+claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_<new>" -- npx -y @drawpro/mcp
+```
 
 ## 3. Unlock reading (optional)
 

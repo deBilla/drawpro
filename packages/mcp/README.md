@@ -12,10 +12,15 @@ Full documentation:
 ## Setup
 
 ```bash
-claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp
+claude mcp add drawpro --scope user -- npx -y @drawpro/mcp
+npx -y @drawpro/mcp auth dp_live_...
 ```
 
-Mint the token in DrawPro under **Connect to Claude Code**.
+Mint the token in DrawPro under **Connect to Claude Code**. `auth` verifies it
+against the API before saving, and `auth dp_live_<new>` rotates it later —
+Claude Code can add and remove a server but not edit one, so a token passed with
+`-e DRAWPRO_TOKEN` can only be changed by removing and re-adding the server.
+`DRAWPRO_TOKEN` still works and takes precedence.
 
 `--scope user` registers it for every project on your machine. The scope
 otherwise defaults to `local`, which loads the server only in the directory the

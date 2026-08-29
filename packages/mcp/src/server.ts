@@ -25,6 +25,7 @@ import {
   askHidden,
   installId,
   readConfig,
+  resolveToken,
   telemetryEnabled,
   writeConfig,
   type RequestTrace,
@@ -62,10 +63,12 @@ class ConfigError extends Error {}
 let clientInstance: DrawProClient | null = null;
 function api(): DrawProClient {
   if (!clientInstance) {
-    const token = process.env.DRAWPRO_TOKEN;
+    const token = resolveToken();
     if (!token) {
       throw new ConfigError(
-        'DRAWPRO_TOKEN is not set. Create a token in DrawPro under "Connect to Claude Code", then:\n' +
+        'No API token. Create one in DrawPro under "Connect to Claude Code", then:\n' +
+          '  npx -y @drawpro/mcp auth dp_live_...\n\n' +
+          'Or supply it through the environment when registering the server:\n' +
           '  claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp',
       );
     }
@@ -76,7 +79,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.4.1';
+const VERSION = '0.5.0';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -881,11 +884,74 @@ function maybeSendInBackground(): void {
   });
 }
 
+/**
+ * `drawpro-mcp auth <token>` / `auth --forget` / `auth`
+ *
+ * Stores the token so it can be rotated without touching the MCP registration.
+ * Claude Code can add and remove a server but not edit one, so a token supplied
+ * through `-e DRAWPRO_TOKEN` can only be changed by removing and re-adding the
+ * whole server — and the secret then lives in ~/.claude.json alongside unrelated
+ * configuration. Here it sits in a 0600 file next to the key material.
+ *
+ * The token is checked against the API before being saved: storing one that
+ * does not work turns an immediate, obvious error into a puzzling one later.
+ */
+async function auth(arg: string | undefined): Promise<void> {
+  if (arg === '--forget') {
+    writeConfig({ token: undefined });
+    console.log('Token cleared.');
+    return;
+  }
+
+  if (!arg) {
+    const current = readConfig().token;
+    const fromEnv = Boolean(process.env.DRAWPRO_TOKEN);
+    if (fromEnv) {
+      console.log('Using DRAWPRO_TOKEN from the environment, which takes precedence.');
+    } else if (current) {
+      console.log(`Stored token: ${current.slice(0, 16)}…`);
+    } else {
+      console.log('No token stored.');
+    }
+    console.log('\n  drawpro-mcp auth dp_live_...   store or replace it');
+    console.log('  drawpro-mcp auth --forget      clear it');
+    return;
+  }
+
+  if (!arg.startsWith('dp_live_')) {
+    throw new ConfigError('That does not look like a DrawPro token — they begin with dp_live_.');
+  }
+
+  const probe = new DrawProClient(BASE_URL, arg);
+  let email: string;
+  try {
+    email = (await probe.me()).email;
+  } catch (err) {
+    throw new ConfigError(
+      `That token was rejected, so it has not been saved: ${(err as Error).message}`,
+    );
+  }
+
+  writeConfig({ token: arg });
+  console.log(`Token saved for ${email}.`);
+  if (process.env.DRAWPRO_TOKEN) {
+    console.log(
+      '\nNote: DRAWPRO_TOKEN is also set in this environment and takes precedence.\n' +
+        'Remove it from the MCP registration for the stored token to be used.',
+    );
+  }
+}
+
 async function main() {
   const command = process.argv[2];
 
   if (command === 'login') {
     await login(process.argv.includes('--forget'));
+    return;
+  }
+
+  if (command === 'auth') {
+    await auth(process.argv[3]);
     return;
   }
 
@@ -907,7 +973,8 @@ async function main() {
 
   if (command && command !== 'serve') {
     console.error(
-      `Unknown command "${command}". Use: drawpro-mcp [serve|login|stats|telemetry|report]`,
+      `Unknown command "${command}". ` +
+        'Use: drawpro-mcp [serve|auth|login|stats|telemetry|report]',
     );
     process.exit(2);
   }
