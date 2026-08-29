@@ -1,27 +1,66 @@
-import { createInterface } from 'node:readline';
-
-const CLEAR_LINE = '\x1b[2K\x1b[200D';
-
 /**
  * Read a secret from the terminal without echoing it.
  *
- * The passcode is the account's master secret; it must not land on screen or in
- * shell history. Typed characters are redrawn as asterisks.
+ * Raw mode, echoing an asterisk per keystroke as it arrives. The earlier
+ * version wrapped readline and redrew the line from `rl.line` inside a `data`
+ * handler, but `data` fires before readline updates that property — so the mask
+ * lagged a character behind and the first keystroke drew nothing at all, which
+ * reads as a dead prompt.
  */
 export function askHidden(question: string): Promise<string> {
   return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    const input = process.stdin;
     process.stdout.write(question);
-    const onData = () => {
-      const typed = (rl as unknown as { line: string }).line ?? '';
-      process.stdout.write(CLEAR_LINE + question + '*'.repeat(typed.length));
-    };
-    process.stdin.on('data', onData);
-    rl.question('', (answer) => {
-      process.stdin.removeListener('data', onData);
-      rl.close();
+
+    // Piped or redirected input: there is no terminal to hide anything from,
+    // and raw mode is unavailable.
+    if (!input.isTTY) {
+      let buffered = '';
+      input.setEncoding('utf8');
+      input.on('data', (chunk) => {
+        buffered += chunk;
+      });
+      input.on('end', () => resolve(buffered.split('\n')[0].trim()));
+      return;
+    }
+
+    const wasRaw = input.isRaw;
+    input.setRawMode(true);
+    input.resume();
+    input.setEncoding('utf8');
+
+    let value = '';
+
+    const finish = (result: string | null) => {
+      input.removeListener('data', onData);
+      input.setRawMode(wasRaw);
+      input.pause();
       process.stdout.write('\n');
-      resolve(answer);
-    });
+      if (result === null) {
+        // Ctrl-C: exit the way the shell expects rather than resolving empty.
+        process.exit(130);
+      }
+      resolve(result);
+    };
+
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return finish(value);
+        if (ch === '\x03') return finish(null);
+        if (ch === '\x7f' || ch === '\b') {
+          if (value.length > 0) {
+            value = value.slice(0, -1);
+            process.stdout.write('\b \b'); // erase the last asterisk
+          }
+          continue;
+        }
+        // Ignore arrow keys and other control sequences.
+        if (ch < ' ') continue;
+        value += ch;
+        process.stdout.write('*');
+      }
+    };
+
+    input.on('data', onData);
   });
 }
