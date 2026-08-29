@@ -80,7 +80,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.6.4';
+const VERSION = '0.6.5';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -981,14 +981,31 @@ async function reportOnce(): Promise<void> {
 /** Background send when enabled, at most daily. Never blocks or reports errors:
  *  a telemetry failure must not degrade the tool for the person who opted in. */
 function maybeSendInBackground(): void {
-  if (!telemetryEnabled()) return;
-  const last = readConfig().lastReportAt;
-  if (last && Date.now() - Date.parse(last) < 24 * 60 * 60 * 1000) return;
-  const report = buildReport();
-  if (!report) return;
-  void sendReport(report as unknown as Record<string, unknown>).then(({ ok }) => {
-    if (ok) writeConfig({ lastReportAt: new Date().toISOString() });
-  });
+  // Nothing in here may reach the caller. It runs immediately before the server
+  // takes over stdio, so a throw here rejects main() and exits the process —
+  // which a client sees as CONNECTION_CLOSED, with no clue that telemetry was
+  // involved. buildReport() writes an install id on first use, and the .then()
+  // below writes a timestamp; either can fail on a read-only home or odd
+  // permissions, and an unhandled rejection terminates the process outright.
+  //
+  // Bookkeeping must never be able to take the server down with it.
+  try {
+    if (!telemetryEnabled()) return;
+    const last = readConfig().lastReportAt;
+    if (last && Date.now() - Date.parse(last) < 24 * 60 * 60 * 1000) return;
+    const report = buildReport();
+    if (!report) return;
+    void sendReport(report as unknown as Record<string, unknown>)
+      .then(({ ok }) => {
+        if (ok) writeConfig({ lastReportAt: new Date().toISOString() });
+      })
+      .catch(() => {
+        // Deliberately silent: stdout is the protocol channel, and a failed
+        // report is not worth degrading the session over.
+      });
+  } catch {
+    // Same reasoning.
+  }
 }
 
 /**
@@ -1196,7 +1213,15 @@ async function main() {
   }
 
   maybeSendInBackground();
-  await server.connect(new StdioServerTransport());
+
+  // Any failure from here on leaves the client with a bare CONNECTION_CLOSED,
+  // so surface the reason on stderr, which Claude Code captures.
+  try {
+    await server.connect(new StdioServerTransport());
+  } catch (err) {
+    console.error('[drawpro-mcp] failed to start the stdio transport:', (err as Error).message);
+    throw err;
+  }
 }
 
 main().catch((err) => {

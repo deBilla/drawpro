@@ -69,7 +69,50 @@ Ask Claude to list your DrawPro workspaces. If the tools are missing, they were
 probably registered with the default `local` scope; re-run step 2 with
 `--scope user`.
 
-## Known trap: running from a checkout of this repository
+## Troubleshooting
+
+### `CONNECTION_CLOSED` / "Failed to reconnect"
+
+The server process exited on spawn. Reconnect with `/mcp`, and if it persists:
+
+```bash
+npm cache clean --force
+```
+
+`npx -y @drawpro/mcp` re-resolves on every spawn, so a half-written cache entry
+after a version bump makes the process exit immediately. Clearing it is the
+usual fix.
+
+If it still fails, pin the version so npx stops resolving:
+
+```bash
+claude mcp remove drawpro -s user
+claude mcp add drawpro -s user -- npx -y @drawpro/mcp@0.6.5
+```
+
+To see the actual error, run the same command by hand — Claude Code shows only
+that the connection closed:
+
+```bash
+printf '' | npx -y @drawpro/mcp; echo "exit=$?"
+```
+
+A clean exit code 0 with no output means the server is fine and the problem is
+in the client's spawn. Anything on stderr is the real cause.
+
+### `ETARGET` — "No matching version found"
+
+A propagation race, not a missing version: npm's CDN updates `dist-tags.latest`
+before the version metadata reaches every edge, so npm asks for a version its
+own tag advertises and cannot find it. Wait a minute and retry, or
+`npm cache clean --force`.
+
+### Reads say the account is locked
+
+Run `npx -y @drawpro/mcp login`. **No restart is needed** — the key is read on
+every call, so retrying the same tool immediately afterwards works.
+
+### Known trap: running from a checkout of this repository
 
 Inside a clone of `drawpro`, npm resolves `@drawpro/mcp` to the workspace copy,
 whose bin is not linked, and npx fails with:

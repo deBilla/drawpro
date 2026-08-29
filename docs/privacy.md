@@ -92,6 +92,17 @@ drift apart.
 | Record locally, share nothing | set `DRAWPRO_MCP_LOG` |
 | Record and share aggregates | `telemetry on` |
 
+Turning it on sends the first report immediately and says whether it worked,
+rather than waiting for the next server start — a background send only fires
+when the server boots, so enabling telemetry mid-session used to do nothing
+visible until Claude Code was restarted, which is indistinguishable from a
+broken pipe. `telemetry` also shows when a report was last sent.
+
+Telemetry can never take the server down with it: the startup send is fully
+guarded, including against a failed write inside its own promise, because an
+unhandled rejection there would terminate the process and surface to the client
+as an unexplained `CONNECTION_CLOSED`.
+
 Opting in starts recording on its own, at `~/.drawpro/usage.jsonl`. Consenting to
 *send* usage implies consent to *record* it, recording being the lesser act.
 **The implication does not run the other way**: setting `DRAWPRO_MCP_LOG` records

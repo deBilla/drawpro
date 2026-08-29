@@ -211,3 +211,13 @@ DRAWPRO_TOKEN=dp_live_... npx tsx packages/mcp/tests/smoke.ts
 Spawns the server as a subprocess and speaks MCP to it, because compiling proves
 nothing about protocol behaviour. Read-only: it never creates or modifies a
 sheet.
+
+## Troubleshooting
+
+`CONNECTION_CLOSED` means the process exited on spawn. `npm cache clean --force`
+then reconnect; if it persists, pin the version in the registration. Run
+`printf '' | npx -y @drawpro/mcp; echo $?` by hand to see the real error, since
+the client reports only that the connection closed.
+
+Full guide:
+[docs/connect-claude-code.md](https://github.com/deBilla/drawpro/blob/main/docs/connect-claude-code.md#troubleshooting)

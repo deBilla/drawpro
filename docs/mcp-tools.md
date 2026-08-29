@@ -72,6 +72,16 @@ Boxes are only ever grown, never shrunk, and nothing else moves — reflowing
 neighbours would be the wholesale rewrite this tool exists to avoid. Any box it
 grows is named in the result.
 
+Longer replacement text is re-wrapped to the width the element already
+occupied, so it becomes more lines rather than one very wide one, and the box
+grows in height to match. Before this, a long replacement measured as a single
+enormous line: barely taller than what it replaced, so nothing grew, while
+running hundreds of pixels wider than its container.
+
+If a box still looks wrong after an edit, re-applying the same text as a
+**no-op replacement** — identical `find` and `replace` — re-measures it and
+grows the box, without needing an export.
+
 It cannot add elements.
 
 ## `import_sheet`
