@@ -14,21 +14,44 @@ model User {
   passwordHash        String
   name                String?
   // E2EE fields (null until user sets up encryption)
-  publicKey           String?  // base64 raw 32-byte X25519 public key
-  encryptedPrivateKey String?  // base64 blob: iv(16)|AES-GCM(argon2id(passcode), pem)
-  salt                String?  // hex — used for argon2id and PBKDF2 recovery codes
-  recoveryCodesData   String?  // JSON: RecoveryCodeData[] — 6 PBKDF2-encrypted passcode backups
+  publicKey           String? // base64 raw 32-byte X25519 public key
+  encryptedPrivateKey String? // base64 blob: iv(16)|AES-GCM(argon2id(passcode), pem)
+  salt                String? // hex — used for argon2id and PBKDF2 recovery codes
+  recoveryCodesData   String? // JSON: RecoveryCodeData[] — 6 PBKDF2-encrypted passcode backups
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   ownedWorkspaces      Workspace[]
   workspaceMemberships WorkspaceMember[]
+  apiTokens            ApiToken[]
+}
+
+/// Long-lived credential for non-browser clients (the CLI, Claude Code).
+/// Only the SHA-256 of the token is stored — the token itself is shown once,
+/// at creation, and is unrecoverable afterwards.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  /// Human label, e.g. "laptop CLI".
+  name       String
+  /// Leading, non-secret slice of the token, for identifying it in a list.
+  prefix     String
+  /// SHA-256 hex of the full token. Unique so lookup is a single indexed read.
+  tokenHash  String    @unique
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Workspace {
   id            String   @id @default(cuid())
   name          String
-  encryptedName String?  // base64 ECIES blob — client-encrypted name
+  encryptedName String? // base64 ECIES blob — client-encrypted name
   ownerId       String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -51,17 +74,17 @@ model WorkspaceMember {
 }
 
 model Sheet {
-  id                 String   @id @default(cuid())
-  workspaceId        String
-  name               String
+  id            String   @id @default(cuid())
+  workspaceId   String
+  name          String
   // Plaintext storage (used when user has no encryption keys)
-  elements           Json?
-  appState           Json?
+  elements      Json?
+  appState      Json?
   // Encrypted storage — single blob: eph_pub(32)|iv(16)|authTag(16)|ciphertext
-  encryptedData      String?
-  version            Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  encryptedData String?
+  version       Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }

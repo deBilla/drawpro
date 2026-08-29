@@ -7,6 +7,7 @@ import { ENV } from './config/env';
 import { ensureMinioBucket } from './lib/minio';
 import { redis } from './lib/redis';
 import authRouter from './routes/auth';
+import tokensRouter from './routes/tokens';
 import workspacesRouter from './routes/workspaces';
 import sheetsRouter from './routes/sheets';
 const app = express();
@@ -23,6 +24,8 @@ app.get('/health', (_req, res) => {
 });
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
+// Mounted before /auth so '/auth/tokens' is not swallowed by the auth router.
+app.use('/auth/tokens', tokensRouter);
 app.use('/auth', authRouter);
 app.use('/workspaces', workspacesRouter);
 app.use('/workspaces/:workspaceId/sheets', sheetsRouter);

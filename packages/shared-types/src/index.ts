@@ -125,6 +125,29 @@ export interface UpdateSheetInput {
   encryptedData?: string | null;
 }
 
+/** A personal API token, as returned by the management endpoints. */
+export interface ApiTokenSummary {
+  id: string;
+  name: string;
+  /** Leading, non-secret slice — enough to identify the token in a list. */
+  prefix: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+/** Returned only by POST /auth/tokens. The raw token is never retrievable again. */
+export interface CreatedApiToken extends ApiTokenSummary {
+  token: string;
+}
+
+export interface CreateApiTokenInput {
+  name: string;
+  /** Omit for a token that never expires. */
+  expiresInDays?: number;
+}
+
 export interface SetUserKeysInput {
   /** base64 raw 32-byte X25519 public key */
   publicKey: string;

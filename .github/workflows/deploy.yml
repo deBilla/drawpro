@@ -71,6 +71,16 @@ jobs:
             docker compose -f infra/docker-compose.yml build --no-cache
           '
 
+      - name: Run database migrations
+        run: |
+          ssh ${{ secrets.SERVER_HOST }} '
+            cd ~/drawpro-deployment
+            # Postgres must be up before migrating; the API image carries the
+            # prisma CLI (a devDependency, and npm ci installs devDeps).
+            docker compose -f infra/docker-compose.yml up -d postgres
+            docker compose -f infra/docker-compose.yml run --rm --no-deps api npx prisma migrate deploy
+          '
+
       - name: Start services
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
