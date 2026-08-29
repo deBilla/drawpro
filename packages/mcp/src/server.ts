@@ -55,7 +55,7 @@ function api(): DrawProClient {
     if (!token) {
       throw new ConfigError(
         'DRAWPRO_TOKEN is not set. Create a token in DrawPro under "Connect to Claude Code", then:\n' +
-          '  claude mcp add drawpro -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp',
+          '  claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp',
       );
     }
     clientInstance = new DrawProClient(BASE_URL, token);

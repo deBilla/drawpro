@@ -137,7 +137,7 @@ export default function ConnectClaudeCode({ onClose }: { onClose: () => void }) 
 
             <CommandBlock
               step="1. Register the MCP server with Claude Code"
-              command={`claude mcp add drawpro \\
+              command={`claude mcp add drawpro --scope user \\
   -e DRAWPRO_TOKEN="${freshToken}" \\
   -- npx -y @drawpro/mcp`}
             />

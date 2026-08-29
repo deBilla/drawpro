@@ -6,10 +6,17 @@ account from Claude Code, Claude Desktop, or any MCP client.
 ## Setup
 
 ```bash
-claude mcp add drawpro -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp
+claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp
 ```
 
 Mint the token in DrawPro under **Connect to Claude Code**.
+
+`--scope user` registers it for every project on your machine. The scope
+otherwise defaults to `local`, which loads the server only in the directory the
+command was run in — diagramming is not a property of one repo, so that default
+is almost never what you want here. Avoid `--scope project`: it writes
+`.mcp.json` into whichever repo you are standing in, token included, where it
+invites being committed.
 
 To read existing sheets, unlock the account once:
 
