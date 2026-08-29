@@ -1,18 +1,43 @@
 {
   "name": "@drawpro/mcp",
-  "version": "0.0.1",
-  "private": true,
-  "main": "./src/server.ts",
+  "version": "0.1.0",
+  "description": "MCP server for DrawPro \u2014 read and create end-to-end encrypted Excalidraw diagrams from Claude",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deBilla/drawpro.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://github.com/deBilla/drawpro/tree/main/packages/mcp#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "excalidraw",
+    "diagram",
+    "claude",
+    "drawpro"
+  ],
+  "type": "commonjs",
   "bin": {
-    "drawpro-mcp": "./src/server.ts"
+    "drawpro-mcp": "./dist/server.js"
+  },
+  "main": "./dist/server.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "node build.mjs",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@drawpro/client": "*",
-    "@drawpro/diagram": "*",
+    "@dagrejs/dagre": "^1.1.4",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "@phi-ag/argon2": "^0.5.19",
+    "fractional-indexing": "^3.2.0",
     "zod": "^3.23.8"
   }
 }

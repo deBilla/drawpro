@@ -7,6 +7,9 @@ dist-electron/
 .DS_Store
 *.log
 
+# npm pack output
+*.tgz
+
 # Extension build artifacts — rebuild with the zip command in
 # extensions/ollama-cors/README.md
 extensions/*.zip

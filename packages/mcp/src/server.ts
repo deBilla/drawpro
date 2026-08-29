@@ -17,7 +17,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { DrawProClient, loadKey, type DrawProUser } from '@drawpro/client';
+import {
+  DrawProClient,
+  askHidden,
+  decryptPrivateKey,
+  forgetKey,
+  loadKey,
+  storeKey,
+  type DrawProUser,
+} from '@drawpro/client';
 import {
   buildDiagram,
   describeScene,
@@ -31,21 +39,33 @@ import {
 const BASE_URL = process.env.DRAWPRO_URL ?? 'https://drawpro.kithly.app/api';
 const APP_URL = BASE_URL.replace(/\/api\/?$/, '');
 
-function requireToken(): string {
-  const token = process.env.DRAWPRO_TOKEN;
-  if (!token) {
-    throw new Error(
-      'DRAWPRO_TOKEN is not set. Create a token in DrawPro under "Connect to Claude Code".',
-    );
-  }
-  return token;
-}
+class ConfigError extends Error {}
 
-const client = new DrawProClient(BASE_URL, requireToken());
+/**
+ * Built on first use rather than at import.
+ *
+ * Constructing at module scope meant a missing token crashed with a raw stack
+ * trace before any command could run — including `login`, which is what a user
+ * reaches for when setting the token up.
+ */
+let clientInstance: DrawProClient | null = null;
+function api(): DrawProClient {
+  if (!clientInstance) {
+    const token = process.env.DRAWPRO_TOKEN;
+    if (!token) {
+      throw new ConfigError(
+        'DRAWPRO_TOKEN is not set. Create a token in DrawPro under "Connect to Claude Code", then:\n' +
+          '  claude mcp add drawpro -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp',
+      );
+    }
+    clientInstance = new DrawProClient(BASE_URL, token);
+  }
+  return clientInstance;
+}
 
 let cachedUser: DrawProUser | null = null;
 async function currentUser(): Promise<DrawProUser> {
-  if (!cachedUser) cachedUser = await client.me();
+  if (!cachedUser) cachedUser = await api().me();
   return cachedUser;
 }
 
@@ -62,9 +82,10 @@ async function unlockedKey(): Promise<{ key: Uint8Array } | { error: string }> {
   if (!key) {
     return {
       error:
-        `This account is locked. Run \`DRAWPRO_TOKEN=... npx tsx packages/client/src/login.ts\` ` +
-        `in a terminal to unlock it — it prompts for the passcode and stores the derived key ` +
-        `in the OS keychain. Ask the user to do this; never ask them for the passcode here.`,
+        'This account is locked, so names and contents cannot be read. Ask the user to run ' +
+        '`DRAWPRO_TOKEN=... npx -y @drawpro/mcp login` in a terminal. It prompts for their ' +
+        'passcode and stores the derived key in the OS keychain. Never ask the user for their ' +
+        'passcode here — it must not pass through this conversation.',
     };
   }
   return { key };
@@ -88,13 +109,13 @@ server.tool(
     'encrypted at rest and are only readable once the account is unlocked.',
   {},
   async () => {
-    const workspaces = await client.listWorkspaces();
+    const workspaces = await api().listWorkspaces();
     const unlocked = await unlockedKey();
 
     const rows = await Promise.all(
       workspaces.map(async (ws) => {
         const name =
-          'key' in unlocked ? await client.readName(ws.encryptedName, unlocked.key) : null;
+          'key' in unlocked ? await api().readName(ws.encryptedName, unlocked.key) : null;
         return `${ws.id}  ${name ?? ws.name}  (${ws.sheetsCount ?? '?'} sheets)`;
       }),
     );
@@ -109,13 +130,13 @@ server.tool(
   'List the sheets in a DrawPro workspace, with their decrypted names.',
   { workspace_id: z.string().describe('Workspace id, from list_workspaces') },
   async ({ workspace_id }) => {
-    const sheets = await client.listSheets(workspace_id);
+    const sheets = await api().listSheets(workspace_id);
     const unlocked = await unlockedKey();
 
     const rows = await Promise.all(
       sheets.map(async (s) => {
         const name =
-          'key' in unlocked ? await client.readName(s.encryptedData, unlocked.key) : null;
+          'key' in unlocked ? await api().readName(s.encryptedData, unlocked.key) : null;
         return `${s.id}  ${name ?? s.name}  updated ${s.updatedAt}`;
       }),
     );
@@ -138,7 +159,7 @@ server.tool(
     const unlocked = await unlockedKey();
     if ('error' in unlocked) return text(unlocked.error);
 
-    const scene = await client.readSheet(workspace_id, sheet_id, unlocked.key);
+    const scene = await api().readSheet(workspace_id, sheet_id, unlocked.key);
     const outline = describeScene(scene.elements as ExcalidrawElement[]);
     return text(
       `sheet: ${scene.name}\nelements: ${scene.elements.length}\n\n${formatOutline(outline)}`,
@@ -228,7 +249,7 @@ server.tool(
     if (!built.ok) return text(built.error);
 
     const user = await currentUser();
-    const sheet = await client.createSheet(
+    const sheet = await api().createSheet(
       workspace_id,
       { name, elements: built.scene.elements, appState: built.scene.appState },
       user.publicKey,
@@ -258,7 +279,7 @@ server.tool(
     if (!built.ok) return text(built.error);
 
     const user = await currentUser();
-    await client.updateSheet(
+    await api().updateSheet(
       workspace_id,
       sheet_id,
       { name, elements: built.scene.elements, appState: built.scene.appState },
@@ -274,12 +295,75 @@ server.tool(
   },
 );
 
+/**
+ * Interactive unlock, run as `drawpro-mcp login`.
+ *
+ * It lives in this binary rather than a separate package because a user who
+ * installs the MCP server needs it, and because the passcode must be typed at a
+ * terminal — never passed as a tool argument, where it would land in the
+ * model's context and the transcript.
+ */
+async function login(forget: boolean): Promise<void> {
+  const user = await currentUser();
+
+  if (forget) {
+    forgetKey(user.email);
+    console.log(`Forgot the stored key for ${user.email}.`);
+    return;
+  }
+
+  if (!user.encryptedPrivateKey || !user.salt) {
+    console.log(`${user.email} has no encryption keys — nothing to unlock.`);
+    return;
+  }
+
+  if (loadKey(user.email)) {
+    console.log(`${user.email} is already unlocked. Use \`login --forget\` to clear it.`);
+    return;
+  }
+
+  const passcode = await askHidden('passcode: ');
+  process.stdout.write('deriving key (argon2id, 128 MB)... ');
+  const started = Date.now();
+
+  let key: Uint8Array;
+  try {
+    key = await decryptPrivateKey(user.encryptedPrivateKey, passcode, user.salt);
+  } catch {
+    // AES-GCM reports a failed tag check as an opaque operation error; for this
+    // command there is only one thing it can mean.
+    console.log('');
+    throw new ConfigError('Incorrect passcode.');
+  }
+  console.log(`${Date.now() - started} ms`);
+
+  const { location } = storeKey(user.email, key);
+  console.log(`Unlocked ${user.email}. Key stored in the ${location}.`);
+  console.log('Claude can now read your sheets. The passcode was not stored or sent anywhere.');
+}
+
 async function main() {
+  const command = process.argv[2];
+
+  if (command === 'login') {
+    await login(process.argv.includes('--forget'));
+    return;
+  }
+
+  if (command && command !== 'serve') {
+    console.error(`Unknown command "${command}". Use: drawpro-mcp [serve|login] [--forget]`);
+    process.exit(2);
+  }
+
   await server.connect(new StdioServerTransport());
 }
 
 main().catch((err) => {
   // stderr only — stdout is the protocol channel.
+  if (err instanceof ConfigError) {
+    console.error(err.message);
+    process.exit(2);
+  }
   console.error('[drawpro-mcp]', err.message);
   process.exit(1);
 });

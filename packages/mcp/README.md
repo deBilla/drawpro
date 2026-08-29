@@ -6,9 +6,7 @@ account from Claude Code, Claude Desktop, or any MCP client.
 ## Setup
 
 ```bash
-claude mcp add drawpro \
-  -e DRAWPRO_TOKEN="dp_live_..." \
-  -- npx tsx <path to drawpro>/packages/mcp/src/server.ts
+claude mcp add drawpro -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp
 ```
 
 Mint the token in DrawPro under **Connect to Claude Code**.
@@ -16,8 +14,22 @@ Mint the token in DrawPro under **Connect to Claude Code**.
 To read existing sheets, unlock the account once:
 
 ```bash
-DRAWPRO_TOKEN="dp_live_..." npx tsx packages/client/src/login.ts
+DRAWPRO_TOKEN="dp_live_..." npx -y @drawpro/mcp login
 ```
+
+`login --forget` clears the stored key again.
+
+## Publishing
+
+```bash
+npm run build --workspace @drawpro/mcp
+npm publish --workspace @drawpro/mcp --access public
+```
+
+`@drawpro/client` and `@drawpro/diagram` are workspace packages that are not
+published; esbuild inlines them into `dist/server.js`. Everything else stays a
+real dependency, which matters for `@phi-ag/argon2` — it loads its `.wasm` from
+its own package directory, so bundling it would break unlocking.
 
 ## Why it runs locally
 
