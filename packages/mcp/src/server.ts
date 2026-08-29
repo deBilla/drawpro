@@ -594,13 +594,20 @@ tool(
 /**
  * Summarise the usage log.
  *
- *   drawpro-mcp stats [path]
+ *   drawpro-mcp stats [path] [--json]
  *
  * The numbers worth watching are the refusal rates: a tool that frequently
  * declines is one whose description is not steering the model well, which is
  * cheaper to learn from real use than from a synthetic eval.
+ *
+ * Unlike the raw log — which carries workspace and sheet ids so you can
+ * correlate calls against your own account — this output is aggregate only:
+ * tool names, counts, and timings. Nothing here identifies an account, a
+ * workspace, a sheet, or anything drawn on one, which is what makes it safe to
+ * paste into a bug report. That is the intended path for improving the package:
+ * the log stays on your machine, and you choose whether to share the summary.
  */
-function stats(path: string | undefined): void {
+function stats(path: string | undefined, asJson: boolean): void {
   const file = path ?? process.env.DRAWPRO_MCP_LOG;
   if (!file) {
     console.error('Set DRAWPRO_MCP_LOG, or pass a path: drawpro-mcp stats <file>');
@@ -624,7 +631,7 @@ function stats(path: string | undefined): void {
   });
 
   if (rows.length === 0) {
-    console.log('No calls recorded yet.');
+    console.log(asJson ? '{"calls":0}' : 'No calls recorded yet.');
     return;
   }
 
@@ -642,19 +649,56 @@ function stats(path: string | undefined): void {
   const median = (xs: number[]) =>
     xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : 0;
 
-  console.log(`${rows.length} calls  ${String(rows[0].ts).slice(0, 10)} .. ${String(rows[rows.length - 1].ts).slice(0, 10)}\n`);
-  console.log('  tool               calls  refused  failed  median');
-  for (const [name, a] of [...byTool.entries()].sort((x, y) => y[1].n - x[1].n)) {
-    const pct = a.n ? Math.round((a.refused / a.n) * 100) : 0;
+  const written = rows.filter(
+    (r) =>
+      ['create_diagram', 'update_diagram', 'edit_sheet_text', 'import_sheet'].includes(
+        String(r.tool),
+      ) &&
+      !r.refused &&
+      r.ok !== false,
+  ).length;
+
+  const tools = [...byTool.entries()]
+    .sort((x, y) => y[1].n - x[1].n)
+    .map(([name, a]) => ({
+      tool: name,
+      calls: a.n,
+      refused: a.refused,
+      failed: a.failed,
+      median_ms: median(a.ms),
+    }));
+
+  if (asJson) {
     console.log(
-      `  ${name.padEnd(18)} ${String(a.n).padStart(5)}  ${String(a.refused).padStart(4)} ${String(pct).padStart(3)}%  ${String(a.failed).padStart(6)}  ${String(median(a.ms)).padStart(5)}ms`,
+      JSON.stringify(
+        {
+          version: '0.3.2',
+          calls: rows.length,
+          from: String(rows[0].ts).slice(0, 10),
+          to: String(rows[rows.length - 1].ts).slice(0, 10),
+          writes: written,
+          tools,
+        },
+        null,
+        2,
+      ),
     );
+    return;
   }
 
-  const written = rows
-    .filter((r) => ['create_diagram', 'update_diagram', 'edit_sheet_text', 'import_sheet'].includes(String(r.tool)) && !r.refused && r.ok !== false)
-    .length;
+  console.log(`${rows.length} calls  ${String(rows[0].ts).slice(0, 10)} .. ${String(rows[rows.length - 1].ts).slice(0, 10)}\n`);
+  console.log('  tool               calls  refused  failed  median');
+  for (const t of tools) {
+    const pct = t.calls ? Math.round((t.refused / t.calls) * 100) : 0;
+    console.log(
+      `  ${t.tool.padEnd(18)} ${String(t.calls).padStart(5)}  ${String(t.refused).padStart(4)} ${String(pct).padStart(3)}%  ${String(t.failed).padStart(6)}  ${String(t.median_ms).padStart(5)}ms`,
+    );
+  }
   console.log(`\n  ${written} successful writes to sheets`);
+  console.log(
+    '\n  No ids, account details, or diagram content above — safe to paste into a bug report.',
+  );
+  console.log('  Add --json for a machine-readable copy.');
 }
 
 async function main() {
@@ -666,7 +710,8 @@ async function main() {
   }
 
   if (command === 'stats') {
-    stats(process.argv[3]);
+    const rest = process.argv.slice(3);
+    stats(rest.find((a) => !a.startsWith('--')), rest.includes('--json'));
     return;
   }
 

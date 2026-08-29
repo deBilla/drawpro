@@ -142,9 +142,28 @@ drawpro-mcp stats                 # or: npx -y @drawpro/mcp stats
   edit_sheet_text        1     1 100%       0     62ms
 ```
 
-Opt-in, and content-free by construction: tool name, timing, outcome, and counts
-— never a label, a node name, a file's contents, or the token. A log you would
-hesitate to paste into an issue is one nobody keeps enabled.
+Opt-in, and never transmitted. `logCall` does one thing — append to that file —
+and the only outbound request this package can make is to your own DrawPro
+account's sheets. Unset the variable and nothing is written at all; there is no
+default path and no fallback.
+
+### How that feeds back into the package
+
+The raw log stays on your machine and carries workspace and sheet ids, so you
+can correlate calls against your own account. `stats` is the aggregate: tool
+names, counts, timings, and nothing that identifies an account, a workspace, a
+sheet, or anything drawn on one.
+
+That split is the point. Sharing is a decision you make, not a default the
+package makes for you:
+
+```bash
+drawpro-mcp stats --json    # paste into an issue
+```
+
+There is no telemetry endpoint, and adding one to a product built on the server
+never seeing your diagrams would be the wrong trade. If a tool is refusing
+often, the aggregate says so without anyone learning what you were drawing.
 
 The column worth watching is **refused**. A tool that frequently declines is one
 whose description is not steering the model well, and that is cheaper to learn
