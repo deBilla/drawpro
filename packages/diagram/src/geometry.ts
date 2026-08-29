@@ -70,3 +70,32 @@ export function boxesOverlap(a: Box, b: Box, tolerance = 0): boolean {
 export function roundPoint(p: Point): Point {
   return { x: Math.round(p.x), y: Math.round(p.y) };
 }
+
+/**
+ * The point half way along a polyline, measured by arc length.
+ *
+ * A bent arrow's bounding-box centre can sit well off the line itself, which
+ * leaves its label floating in space. Walking the actual path puts the label
+ * where the line really is.
+ */
+export function polylineMidpoint(points: Point[]): Point {
+  if (points.length === 0) return { x: 0, y: 0 };
+  if (points.length === 1) return points[0];
+
+  const segments = points.slice(1).map((p, i) => Math.hypot(p.x - points[i].x, p.y - points[i].y));
+  const total = segments.reduce((a, b) => a + b, 0);
+  if (total === 0) return points[0];
+
+  let travelled = 0;
+  for (let i = 0; i < segments.length; i++) {
+    if (travelled + segments[i] >= total / 2) {
+      const t = (total / 2 - travelled) / segments[i];
+      return {
+        x: points[i].x + (points[i + 1].x - points[i].x) * t,
+        y: points[i].y + (points[i + 1].y - points[i].y) * t,
+      };
+    }
+    travelled += segments[i];
+  }
+  return points[points.length - 1];
+}

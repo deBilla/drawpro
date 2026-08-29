@@ -1,6 +1,6 @@
 import { elementId, elementMeta } from './ids';
 import { measureText } from './text';
-import { roundPoint, type Point } from './geometry';
+import { polylineMidpoint, roundPoint, type Point } from './geometry';
 import type { Accent, EdgeStyle, ExcalidrawElement, ShapeKind } from './types';
 import {
   BASE_STYLE,
@@ -151,10 +151,15 @@ export function createArrowLabel(arrow: ExcalidrawElement, label: string): Excal
   bound.push({ type: 'text', id: textId });
   arrow.boundElements = bound;
 
-  const midX = (arrow.x as number) + (arrow.width as number) / 2;
-  const midY = (arrow.y as number) + (arrow.height as number) / 2;
-  const labelX = Math.round(midX - metrics.width / 2);
-  const labelY = Math.round(midY - metrics.height / 2);
+  // Reconstruct the arrow's absolute path — `points` are relative to x/y.
+  const relative = arrow.points as number[][];
+  const absolute = relative.map(([dx, dy]) => ({
+    x: (arrow.x as number) + dx,
+    y: (arrow.y as number) + dy,
+  }));
+  const mid = polylineMidpoint(absolute);
+  const labelX = Math.round(mid.x - metrics.width / 2);
+  const labelY = Math.round(mid.y - metrics.height / 2);
 
   return {
     id: textId,

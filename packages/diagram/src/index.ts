@@ -36,11 +36,15 @@ function shapePadding(kind: ShapeKind): number {
   return CONTAINER_PADDING;
 }
 
+/** Text measurement is an approximation, so leave headroom. A slightly wide box
+ *  reads fine; text touching or crossing the border reads as broken. */
+const WIDTH_SAFETY = 1.06;
+
 function sizeNode(label: string, kind: ShapeKind): { width: number; height: number } {
   const metrics = measureText(label, FONT_SIZE, MAX_LABEL_WIDTH);
   const pad = shapePadding(kind);
   return {
-    width: Math.max(snap(metrics.width + pad * 2), MIN_NODE_WIDTH),
+    width: Math.max(snap(metrics.width * WIDTH_SAFETY + pad * 2), MIN_NODE_WIDTH),
     height: Math.max(snap(metrics.height + pad * 2), MIN_NODE_HEIGHT),
   };
 }

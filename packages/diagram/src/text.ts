@@ -11,14 +11,18 @@ import { LINE_HEIGHT } from './theme';
  */
 const NARROW = new Set([...'ijltfIr.,:;!|\'`()[]{}-']);
 const WIDE = new Set([...'mwMW@%']);
+/** Dashes are nearly a full em and were previously counted as lowercase letters,
+ *  which under-measured any label containing one and overflowed its box. */
+const EM_WIDE = new Set([...'—–']);
 const UPPER_OR_DIGIT = /[A-Z0-9]/;
 
 function charWidth(ch: string): number {
   if (ch === ' ') return 0.3;
+  if (EM_WIDE.has(ch)) return 1.0;
   if (NARROW.has(ch)) return 0.3;
   if (WIDE.has(ch)) return 0.88;
-  if (UPPER_OR_DIGIT.test(ch)) return 0.62;
-  return 0.52;
+  if (UPPER_OR_DIGIT.test(ch)) return 0.66;
+  return 0.55;
 }
 
 export function measureLine(line: string, fontSize: number): number {
