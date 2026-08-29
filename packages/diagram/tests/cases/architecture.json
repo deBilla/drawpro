@@ -1,0 +1,28 @@
+{
+  "title": "DrawPro architecture",
+  "direction": "TB",
+  "spacing": { "node": 70, "rank": 95 },
+  "nodes": [
+    { "id": "browser", "label": "Browser — React + Excalidraw", "accent": "blue" },
+    { "id": "encrypt", "label": "encryptMessage() — in the browser", "accent": "yellow" },
+    { "id": "claude",  "label": "Claude Code", "accent": "violet" },
+    { "id": "cli",     "label": "DrawPro CLI — API token", "accent": "violet" },
+    { "id": "nginx",   "label": "nginx :80" },
+    { "id": "api",     "label": "Express API :3001", "accent": "green" },
+    { "id": "pg",      "label": "Postgres 17", "shape": "ellipse", "accent": "grey" },
+    { "id": "redis",   "label": "Redis", "shape": "ellipse", "accent": "grey" },
+    { "id": "minio",   "label": "MinIO", "shape": "ellipse", "accent": "grey" },
+    { "id": "collab",  "label": "Yjs collab :3002 — future phase", "accent": "grey" }
+  ],
+  "edges": [
+    { "from": "browser", "to": "encrypt", "label": "elements + appState" },
+    { "from": "encrypt", "to": "nginx",   "label": "ciphertext only" },
+    { "from": "claude",  "to": "cli" },
+    { "from": "cli",     "to": "nginx",   "label": "Bearer dp_live_…" },
+    { "from": "nginx",   "to": "api",     "label": "/api/*" },
+    { "from": "api",     "to": "pg",      "label": "sheets, users, tokens" },
+    { "from": "api",     "to": "redis",   "label": "refresh tokens" },
+    { "from": "api",     "to": "minio",   "label": "objects" },
+    { "from": "collab",  "to": "redis",   "label": "not wired up", "style": "dashed" }
+  ]
+}

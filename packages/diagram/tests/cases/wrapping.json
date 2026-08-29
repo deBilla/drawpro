@@ -1,0 +1,17 @@
+{
+  "title": "Label wrapping edge cases",
+  "direction": "LR",
+  "nodes": [
+    { "id": "short", "label": "OK" },
+    { "id": "dash", "label": "Service — with an em dash", "accent": "yellow" },
+    { "id": "long", "label": "A deliberately long label that has to wrap onto several lines", "accent": "blue" },
+    { "id": "unbroken", "label": "Supercalifragilisticexpialidocious", "shape": "ellipse" },
+    { "id": "caps", "label": "WWWW MMMM WWWW", "shape": "diamond", "accent": "red" }
+  ],
+  "edges": [
+    { "from": "short", "to": "dash", "label": "a — b" },
+    { "from": "dash", "to": "long" },
+    { "from": "long", "to": "unbroken", "label": "very long edge label that wraps too" },
+    { "from": "unbroken", "to": "caps", "style": "dotted", "arrowhead": false }
+  ]
+}

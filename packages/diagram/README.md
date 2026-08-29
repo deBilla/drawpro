@@ -63,6 +63,27 @@ Excalidraw's own palette.
 - **Z-order indices** use the same fractional-indexing algorithm Excalidraw
   depends on, so array order and z-order agree.
 
+## Tests
+
+```bash
+npm test --workspace @drawpro/diagram          # compare against goldens
+npm run test:update --workspace @drawpro/diagram   # re-bless after an intended change
+```
+
+Golden-file tests under `tests/`: each spec in `cases/` is generated and diffed
+against a committed scene in `golden/`. Verified to fail on a 2px padding change
+and to exit non-zero, so it is usable as a CI gate.
+
+Ids, seeds, nonces, and timestamps differ on every run, so output is normalised
+before comparison. Rather than dropping ids, they are renumbered in array order
+and every reference is rewritten, which keeps the binding structure visible in
+the golden file — a broken `containerId` or arrow binding shows up as a diff
+instead of normalising away.
+
+These answer "did anything change?", not "is it correct?" A wrong diagram
+blessed once stays blessed, so they complement `validateScene`, which asserts
+what is actually wrong.
+
 ## Known approximation
 
 Text is measured with a per-character width table approximating Excalifont,
