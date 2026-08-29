@@ -71,8 +71,15 @@ counts, timings. Nothing identifying an account, a workspace, a sheet, or
 anything drawn on one.
 
 ```bash
+npx -y @drawpro/mcp stats           # counts, refusals, timings
 npx -y @drawpro/mcp stats --json    # safe to paste into an issue
+npx -y @drawpro/mcp stats --errors  # why calls failed — local only
 ```
+
+`--errors` groups failures by message from the raw log. It is the counterpart to
+the aggregate carrying no error text: a run of failures shows in `stats` as a
+count with no cause, and the cause is in the same file. It reads locally and
+sends nothing.
 
 One function produces both, so what you are shown and what would be sent cannot
 drift apart.

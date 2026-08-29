@@ -773,6 +773,57 @@ function summariseLog(file: string): LogSummary | null {
  * Nothing here identifies an account, a workspace, a sheet, or anything drawn
  * on one, which is what makes it safe to paste into a bug report.
  */
+/**
+ * Break the `failed` column down by error message, from the raw local log.
+ *
+ * The aggregate deliberately carries no error text, so a run of failures shows
+ * up as a count with no cause. The cause is sitting in the same file — it just
+ * has to stay local, which is exactly why this reads the log rather than
+ * enriching the report.
+ */
+function errors(file: string): void {
+  let rows: Record<string, unknown>[];
+  try {
+    rows = readFileSync(file, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .flatMap((line) => {
+        try {
+          return [JSON.parse(line) as Record<string, unknown>];
+        } catch {
+          return [];
+        }
+      });
+  } catch {
+    console.error(`Could not read ${file}`);
+    process.exit(2);
+  }
+
+  const failures = rows.filter((r) => r.ok === false || r.refused);
+  if (failures.length === 0) {
+    console.log('No failures or refusals recorded.');
+    return;
+  }
+
+  const grouped = new Map<string, { n: number; tools: Set<string>; last: string }>();
+  for (const r of failures) {
+    const reason = String(r.error ?? 'refused (the tool declined, see its message)').slice(0, 120);
+    const acc = grouped.get(reason) ?? { n: 0, tools: new Set<string>(), last: '' };
+    acc.n++;
+    acc.tools.add(String(r.tool));
+    acc.last = String(r.ts);
+    grouped.set(reason, acc);
+  }
+
+  console.log(`${failures.length} of ${rows.length} calls failed or were refused\n`);
+  for (const [reason, a] of [...grouped.entries()].sort((x, y) => y[1].n - x[1].n)) {
+    console.log(`  ${a.n}x  ${[...a.tools].join(', ')}`);
+    console.log(`      ${reason}`);
+    console.log(`      last seen ${a.last}\n`);
+  }
+  console.log('  This reads your local log and sends nothing.');
+}
+
 function stats(path: string | undefined, asJson: boolean): void {
   const file = path ?? logPath();
   if (!file) {
@@ -806,7 +857,7 @@ function stats(path: string | undefined, asJson: boolean): void {
   console.log(
     '\n  No ids, account details, or diagram content above — safe to paste into a bug report.',
   );
-  console.log('  Add --json for a machine-readable copy.');
+  console.log('  Add --json for a machine-readable copy, or --errors to see why calls failed.');
 }
 
 
@@ -1095,7 +1146,16 @@ async function main() {
 
   if (command === 'stats') {
     const rest = process.argv.slice(3);
-    stats(rest.find((a) => !a.startsWith('--')), rest.includes('--json'));
+    const file = rest.find((a) => !a.startsWith('--')) ?? logPath();
+    if (rest.includes('--errors')) {
+      if (!file) {
+        console.error('No usage is being recorded, so there is nothing to explain.');
+        process.exit(2);
+      }
+      errors(file);
+      return;
+    }
+    stats(file, rest.includes('--json'));
     return;
   }
 
