@@ -2,10 +2,10 @@ FROM node:20-alpine AS base
 WORKDIR /app
 
 FROM base AS deps
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/frontend/package.json ./apps/frontend/
 COPY packages/shared-types/package.json ./packages/shared-types/
-RUN npm install --workspaces --if-present
+RUN npm ci
 
 FROM deps AS builder
 COPY . .

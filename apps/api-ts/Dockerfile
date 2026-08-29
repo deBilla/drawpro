@@ -3,10 +3,10 @@ WORKDIR /app
 RUN corepack enable
 
 FROM base AS deps
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/api-ts/package.json ./apps/api-ts/
 COPY packages/shared-types/package.json ./packages/shared-types/
-RUN npm install --workspaces --if-present
+RUN npm ci
 
 FROM deps AS builder
 COPY . .
