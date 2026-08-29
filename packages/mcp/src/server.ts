@@ -80,7 +80,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -107,10 +107,14 @@ async function unlockedKey(): Promise<{ key: Uint8Array } | { error: string }> {
   if (!key) {
     return {
       error:
-        'This account is locked, so names and contents cannot be read. Ask the user to run ' +
-        '`DRAWPRO_TOKEN=... npx -y @drawpro/mcp login` in a terminal. It prompts for their ' +
-        'passcode and stores the derived key in the OS keychain. Never ask the user for their ' +
-        'passcode here — it must not pass through this conversation.',
+        `This account (${user.email}) is locked, so names and contents cannot be read.\n\n` +
+        'Ask the user to run this in a terminal:\n' +
+        '  npx -y @drawpro/mcp login\n\n' +
+        'It prompts for their passcode and stores the derived key in the OS keychain. ' +
+        'They do NOT need to restart — once it completes, simply try the same tool again ' +
+        'and it will work.\n\n' +
+        'Never ask the user for their passcode here. It is the account\'s master secret and ' +
+        'must not pass through this conversation.',
     };
   }
   return { key };

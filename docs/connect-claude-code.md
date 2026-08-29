@@ -47,6 +47,11 @@ npx -y @drawpro/mcp login          # login --forget clears it
 
 `connect` offers this at the end, so usually you will not run it separately.
 
+**No restart is needed.** The key is read from the keychain on every read, not
+cached when the server starts, so unlocking in another terminal takes effect on
+the very next tool call. If Claude reports a locked account, run `login` and ask
+it to try again — the same session picks it up.
+
 It prompts in the terminal and stores **the key, not the passcode**, in your OS
 keychain. This is deliberately not a tool: a stdio server cannot prompt, and
 passing a passcode as a tool argument would put your account's master secret
@@ -55,7 +60,8 @@ locked, it will relay this instruction — it should never ask you for the
 passcode directly.
 
 The key is stored per account, so connecting a token for a different account
-means unlocking that one too.
+means unlocking that one too. Rotating a token for the *same* account does not
+require unlocking again.
 
 ## Checking it worked
 

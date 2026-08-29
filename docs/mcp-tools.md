@@ -14,6 +14,18 @@ to use, because two of them are destructive in ways that are not obvious.
 | `edit_sheet_text` | yes | rewrites named text, preserving everything else |
 | `import_sheet` | no | writes a local `.excalidraw` file in verbatim |
 
+## When an account is locked
+
+Reads fail softly. `list_workspaces` and `list_sheets` still return ids with
+ciphertext names; `read_sheet` returns an instruction to run `login`.
+
+The instruction is written for the model as much as the user, and says two
+things explicitly: that no restart is needed — retry the same tool after
+unlocking — and that it must never ask for the passcode itself. A model that
+asks you to type your passcode into the conversation has moved your account's
+master secret into a transcript, which is the failure the out-of-band unlock
+exists to prevent.
+
 ## Choosing a writing tool
 
 **Was the sheet generated from a spec?** `update_diagram` is correct.
