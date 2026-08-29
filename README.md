@@ -10,6 +10,19 @@ DrawPro is built with Excalidraw, Redis, and PostgreSQL, and ships with **end-to
 
 ---
 
+## Documentation
+
+| | |
+|---|---|
+| [Connect Claude Code](./docs/connect-claude-code.md) | Set up the MCP server so Claude can read and create diagrams in your account |
+| [MCP tools](./docs/mcp-tools.md) | What each tool does, and which one to reach for |
+| [Diagram specs](./docs/diagram-specs.md) | The authoring format, and why it has no coordinates |
+| [Privacy](./docs/privacy.md) | What leaves your machine, what doesn't, and what you can turn on |
+| [Operations](./docs/operations.md) | Deploys, migrations, builds |
+| [Development](./docs/development.md) | Repository layout and tests |
+
+---
+
 ## End-to-End Encryption
 
 > Your data is encrypted before it leaves your browser. The server only ever sees ciphertext.

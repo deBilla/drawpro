@@ -3,6 +3,12 @@
 Local MCP server for DrawPro. Lets Claude read and create diagrams in your
 account from Claude Code, Claude Desktop, or any MCP client.
 
+Full documentation:
+[setup](https://github.com/deBilla/drawpro/blob/main/docs/connect-claude-code.md) ·
+[tools](https://github.com/deBilla/drawpro/blob/main/docs/mcp-tools.md) ·
+[diagram specs](https://github.com/deBilla/drawpro/blob/main/docs/diagram-specs.md) ·
+[privacy](https://github.com/deBilla/drawpro/blob/main/docs/privacy.md)
+
 ## Setup
 
 ```bash
