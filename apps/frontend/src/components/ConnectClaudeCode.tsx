@@ -136,29 +136,18 @@ export default function ConnectClaudeCode({ onClose }: { onClose: () => void }) 
             </div>
 
             <CommandBlock
-              step="1. Register the server — once per machine"
-              command="claude mcp add drawpro --scope user -- npx -y @drawpro/mcp"
+              step="Run this in a terminal"
+              command={`npx -y @drawpro/mcp connect ${freshToken}`}
             />
 
-            <CommandBlock
-              step="2. Connect this token — re-run whenever you rotate"
-              command={`npx -y @drawpro/mcp auth ${freshToken}`}
-            />
-
-            <CommandBlock
-              step="3. Unlock reading (optional)"
-              command="npx -y @drawpro/mcp login"
-            />
             <p style={styles.footnote}>
-              Step 1 is only needed the first time — if Claude Code says the server already
-              exists, skip it and run step 2, which replaces whatever token was there.
-              Restart Claude Code afterwards.
+              This checks the token, registers the server with Claude Code, and offers to
+              unlock reading. Restart Claude Code afterwards.
               <br />
               <br />
-              Creating diagrams needs only the token. <strong>Reading</strong> them needs your
-              passcode, which unwraps your private key — so run step 3 in a terminal. It stores
-              the derived key in your OS keychain and never sends the passcode anywhere. Claude
-              will never ask you for it.
+              Run it again any time with a new token to rotate — it replaces whatever was
+              there. Reading asks for your passcode, which unwraps your private key on your
+              own machine and is never sent anywhere. Claude will never ask you for it.
             </p>
             <button style={styles.doneBtn} onClick={() => setFreshToken(null)}>
               I&apos;ve saved it

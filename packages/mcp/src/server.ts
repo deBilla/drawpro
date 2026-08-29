@@ -14,6 +14,7 @@
  * `login` derives from the passcode and stores in the OS keychain. The passcode
  * never reaches a tool argument, so it stays out of the model's context.
  */
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -67,7 +68,7 @@ function api(): DrawProClient {
     if (!token) {
       throw new ConfigError(
         'No API token. Create one in DrawPro under "Connect to Claude Code", then:\n' +
-          '  npx -y @drawpro/mcp auth dp_live_...\n\n' +
+          '  npx -y @drawpro/mcp connect dp_live_...\n\n' +
           'Or supply it through the environment when registering the server:\n' +
           '  claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_..." -- npx -y @drawpro/mcp',
       );
@@ -79,7 +80,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -942,11 +943,111 @@ async function auth(arg: string | undefined): Promise<void> {
   }
 }
 
+/**
+ * `drawpro-mcp connect <token>` — the whole setup, in one command.
+ *
+ * Connecting used to span two tools: register the server with Claude Code, then
+ * store the token here, then restart, and know that an environment variable
+ * silently outranks the stored token. Every one of those steps was a place to
+ * get stuck, and the failure modes were indistinguishable from each other — a
+ * missing token, a stale token, and a token shadowed by the environment all
+ * present as the same 401.
+ *
+ * This does the registration itself, so the ordering cannot be got wrong. It
+ * registers WITHOUT -e DRAWPRO_TOKEN, which also keeps the token out of
+ * ~/.claude.json, out of shell history, and out of the process list.
+ */
+function claudeAvailable(): boolean {
+  try {
+    execFileSync('claude', ['--version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function connect(token: string | undefined): Promise<void> {
+  if (!token) {
+    throw new ConfigError(
+      'Usage: drawpro-mcp connect dp_live_...\n' +
+        'Create a token in DrawPro under "Connect to Claude Code".',
+    );
+  }
+  if (!token.startsWith('dp_live_')) {
+    throw new ConfigError('That does not look like a DrawPro token — they begin with dp_live_.');
+  }
+
+  process.stdout.write('Checking the token... ');
+  let user: DrawProUser;
+  try {
+    user = await new DrawProClient(BASE_URL, token).me();
+  } catch (err) {
+    console.log('');
+    throw new ConfigError(`rejected, nothing has been changed: ${(err as Error).message}`);
+  }
+  console.log(`ok — ${user.email}`);
+
+  writeConfig({ token });
+
+  if (!claudeAvailable()) {
+    console.log('\nToken saved, but the `claude` command was not found, so the server could not');
+    console.log('be registered. Register it yourself, without -e DRAWPRO_TOKEN:');
+    console.log('\n  claude mcp add drawpro --scope user -- npx -y @drawpro/mcp');
+    return;
+  }
+
+  // Remove first so re-running is a rotation rather than an "already exists"
+  // error. Claude Code can add and remove a server but not edit one.
+  try {
+    execFileSync('claude', ['mcp', 'remove', 'drawpro', '-s', 'user'], { stdio: 'ignore' });
+  } catch {
+    // Not registered yet, which is the normal first-run case.
+  }
+
+  try {
+    execFileSync('claude', ['mcp', 'add', 'drawpro', '-s', 'user', '--', 'npx', '-y', '@drawpro/mcp'], {
+      stdio: 'ignore',
+    });
+  } catch (err) {
+    throw new ConfigError(
+      `Token saved, but registering with Claude Code failed: ${(err as Error).message}\n` +
+        'Register it yourself: claude mcp add drawpro --scope user -- npx -y @drawpro/mcp',
+    );
+  }
+
+  console.log('Registered with Claude Code for all your projects.');
+
+  if (user.encryptedPrivateKey && !loadKey(user.email)) {
+    console.log('\nCreating diagrams will work now. Reading them needs your passcode, which');
+    console.log('unwraps your private key on this machine — it is never sent anywhere.');
+    console.log('Unlock now, or skip and run `npx -y @drawpro/mcp login` later.\n');
+
+    const passcode = await askHidden('passcode (or press enter to skip): ');
+    if (passcode) {
+      process.stdout.write('unlocking... ');
+      try {
+        const key = await decryptPrivateKey(user.encryptedPrivateKey, passcode, user.salt!);
+        const { location } = storeKey(user.email, key);
+        console.log(`done, stored in the ${location}.`);
+      } catch {
+        console.log('incorrect passcode. Run `npx -y @drawpro/mcp login` when ready.');
+      }
+    }
+  }
+
+  console.log('\nRestart Claude Code, then ask it to list your DrawPro workspaces.');
+}
+
 async function main() {
   const command = process.argv[2];
 
   if (command === 'login') {
     await login(process.argv.includes('--forget'));
+    return;
+  }
+
+  if (command === 'connect') {
+    await connect(process.argv[3]);
     return;
   }
 
@@ -974,7 +1075,7 @@ async function main() {
   if (command && command !== 'serve') {
     console.error(
       `Unknown command "${command}". ` +
-        'Use: drawpro-mcp [serve|auth|login|stats|telemetry|report]',
+        'Use: drawpro-mcp [serve|connect|auth|login|stats|telemetry|report]',
     );
     process.exit(2);
   }

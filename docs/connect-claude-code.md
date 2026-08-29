@@ -2,86 +2,60 @@
 
 Lets Claude create and edit diagrams in your DrawPro account from the terminal.
 
-## 1. Mint a token
+## Connect
 
-In DrawPro, open **Connect to Claude Code** in the sidebar and generate a token.
-It is shown once and cannot be retrieved afterwards — only its SHA-256 is
-stored, so a database leak yields no working credentials.
+Generate a token in DrawPro under **Connect to Claude Code**, then run the one
+command it gives you:
 
-Treat it like a password. Anyone holding it can act as you.
+```bash
+npx -y @drawpro/mcp connect dp_live_...
+```
 
-## 2. Register the server
+It checks the token, registers the server with Claude Code for all your
+projects, and offers to unlock reading. Restart Claude Code afterwards.
+
+Run it again with a new token to rotate — it replaces whatever was there, rather
+than failing with "already exists".
+
+Nothing is changed if the token is rejected.
+
+### What it does, if you would rather do it by hand
 
 ```bash
 claude mcp add drawpro --scope user -- npx -y @drawpro/mcp
 npx -y @drawpro/mcp auth dp_live_...
+npx -y @drawpro/mcp login          # only needed to read existing sheets
 ```
 
-The token is verified against the API before it is saved, so a bad paste fails
-immediately rather than becoming a puzzling 401 later. It is stored in a `0600`
-file at `~/.drawpro/config.json`, next to the key material.
+The registration deliberately carries no `-e DRAWPRO_TOKEN`. Claude Code can add
+and remove a server but not edit one, so a token passed that way can only be
+changed by removing and re-adding the whole server — and it then sits in
+`~/.claude.json`, in your shell history, and in the process list. Stored
+separately it lives in a `0600` file, and rotating is one command.
 
-You can supply it through the environment instead, which takes precedence:
+`DRAWPRO_TOKEN` in the environment still takes precedence where it is set, which
+is worth knowing: it makes a stored token look like it was ignored.
+
+## Reading needs your passcode
+
+Creating diagrams needs only the token. Reading needs the private key, which is
+wrapped with Argon2id over your passcode:
 
 ```bash
-claude mcp add drawpro --scope user \
-  -e DRAWPRO_TOKEN="dp_live_..." \
-  -- npx -y @drawpro/mcp
+npx -y @drawpro/mcp login          # login --forget clears it
 ```
 
-Prefer the `auth` form. Claude Code can add and remove a server but not edit
-one, so a token set through `-e` can only be changed by removing and re-adding
-the whole server — and it then lives in `~/.claude.json` alongside unrelated
-configuration.
+`connect` offers this at the end, so usually you will not run it separately.
 
-Restart Claude Code afterwards. The server runs as a subprocess started with
-each session, so a restart is also how you pick up a new version.
+It prompts in the terminal and stores **the key, not the passcode**, in your OS
+keychain. This is deliberately not a tool: a stdio server cannot prompt, and
+passing a passcode as a tool argument would put your account's master secret
+into the model's context and the transcript. If you ask Claude to read while
+locked, it will relay this instruction — it should never ask you for the
+passcode directly.
 
-**`--scope user` matters.** Without it the scope defaults to `local`, which
-loads the server only in the directory you ran the command in — and diagramming
-is not a property of one repository. Avoid `--scope project`: it writes
-`.mcp.json` into whichever repo you are standing in, token included, where it
-invites being committed.
-
-## Rotating a token
-
-```bash
-npx -y @drawpro/mcp auth dp_live_<new>    # replaces the stored one
-npx -y @drawpro/mcp auth                  # show which is in use
-npx -y @drawpro/mcp auth --forget         # clear it
-```
-
-Revoke the old token in the DrawPro panel afterwards. Restart Claude Code so the
-server picks up the change.
-
-Rotating does not affect reading: the unwrapped key is stored per account, not
-per token, so you do not need to `login` again.
-
-If the token came from `-e DRAWPRO_TOKEN`, `auth` will tell you the environment
-takes precedence. Rotate that one with:
-
-```bash
-claude mcp remove drawpro
-claude mcp add drawpro --scope user -e DRAWPRO_TOKEN="dp_live_<new>" -- npx -y @drawpro/mcp
-```
-
-## 3. Unlock reading (optional)
-
-Creating diagrams needs only the token. **Reading** them needs your passcode,
-which unwraps your private key:
-
-```bash
-npx -y @drawpro/mcp login
-```
-
-It prompts in the terminal, derives the key, and stores **the key, not the
-passcode**, in your OS keychain. `login --forget` clears it again.
-
-This is deliberately a separate command rather than a tool. A stdio server
-cannot prompt, and routing a passcode through a tool argument would put your
-account's master secret into the model's context and the transcript. If you ask
-Claude to read a sheet while locked, it will relay this instruction — it should
-never ask you for the passcode directly.
+The key is stored per account, so connecting a token for a different account
+means unlocking that one too.
 
 ## Checking it worked
 
