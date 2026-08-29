@@ -85,10 +85,20 @@ containers, and unbound annotation arrows all disappear, and the sheet comes
 back as an auto-laid-out graph. Correct content, different diagram.
 
 Use `edit_sheet_text` for those sheets. It reads the scene, rewrites only the
-strings you name, and writes every other element back byte for byte — so
-coordinates, groupings, and annotations are untouched. Edits apply
-all-or-nothing: if any `find` matches nothing, the sheet is left alone rather
-than half-updated.
+strings you name, and writes every other element back — so coordinates,
+groupings, and annotations are untouched. Edits apply all-or-nothing: if any
+`find` matches nothing, the sheet is left alone rather than half-updated.
+
+The one geometry change it makes is growing a box whose text no longer fits.
+Excalidraw regrows a container around text *bound* to it, but hand-drawn
+diagrams usually have text merely sitting on top of a shape, so longer text
+would otherwise spill out the bottom. Boxes are only ever grown, never shrunk,
+and nothing else moves — reflowing neighbours would be the wholesale rewrite
+this tool exists to avoid. Any box it grows is named in the result, so overlap
+with a neighbour is easy to spot and one drag to fix.
+
+It cannot add elements. A correction that needs a new box or a new annotation
+line is still a manual edit.
 
 `update_diagram` remains the right tool for sheets this package generated, where
 regenerating the layout is the point.

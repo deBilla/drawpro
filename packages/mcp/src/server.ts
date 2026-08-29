@@ -30,6 +30,7 @@ import {
   buildDiagram,
   describeScene,
   formatOutline,
+  growBoxesToFitText,
   measureText,
   validateSpec,
   type DiagramSpec,
@@ -370,6 +371,7 @@ server.tool(
     const elements = scene.elements as ExcalidrawElement[];
 
     const counts = new Map<string, number>();
+    const changedTextIds = new Set<string>();
     for (const el of elements) {
       if (el.type !== 'text') continue;
       const current = ((el.originalText ?? el.text) as string | undefined)?.trim();
@@ -384,9 +386,12 @@ server.tool(
       // Keep the box honest about its new contents. Bound text is re-measured
       // by Excalidraw on load; unbound text is not, so it would keep a stale
       // width and clip.
-      const metrics = measureText(edit.replace, (el.fontSize as number) ?? 20, 1000);
+      const fontSize = (el.fontSize as number) ?? 20;
+      const wrapWidth = (el.containerId as string | null) ? (el.width as number) : 1000;
+      const metrics = measureText(edit.replace, fontSize, wrapWidth);
       el.width = metrics.width;
       el.height = metrics.height;
+      changedTextIds.add(el.id);
 
       el.version = ((el.version as number) ?? 1) + 1;
       el.versionNonce = Math.floor(Math.random() * 2 ** 31);
@@ -394,6 +399,10 @@ server.tool(
 
       counts.set(edit.find, (counts.get(edit.find) ?? 0) + 1);
     }
+
+    // Longer replacement text can overflow the box it sits in; see
+    // growBoxesToFitText for why only growing, and only the box, is correct.
+    const resizes = growBoxesToFitText(elements, changedTextIds);
 
     // Fail closed. A partially applied edit is worse than none: the sheet ends
     // up in a state neither the user nor the model expected, and the diff is
@@ -418,8 +427,14 @@ server.tool(
     const applied = [...counts.entries()]
       .map(([find, n]) => `  ${JSON.stringify(find)} -> ${n} element${n === 1 ? '' : 's'}`)
       .join('\n');
+    const grewNote = resizes.length
+      ? '\n\nBoxes grown so the new text fits (nothing else moved, so check for overlap):\n' +
+        resizes
+          .map((r) => `  a ${r.shapeType} grew ${Math.round(r.from)}px -> ${Math.round(r.to)}px`)
+          .join('\n')
+      : '';
     return text(
-      `Updated "${scene.name}". ${elements.length} elements preserved; only the text below changed.\n${applied}\n${sheetUrl(workspace_id, sheet_id)}`,
+      `Updated "${scene.name}". ${elements.length} elements preserved; only the text below changed.\n${applied}${grewNote}\n${sheetUrl(workspace_id, sheet_id)}`,
     );
   },
 );

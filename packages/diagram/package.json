@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "tsx tests/golden.ts && tsx tests/describe.ts",
+    "test": "tsx tests/golden.ts && tsx tests/describe.ts && tsx tests/fit.ts",
     "test:update": "tsx tests/golden.ts --update"
   },
   "dependencies": {
