@@ -3,11 +3,20 @@
 Local MCP server for DrawPro. Lets Claude read and create diagrams in your
 account from Claude Code, Claude Desktop, or any MCP client.
 
-Full documentation:
-[setup](https://github.com/deBilla/drawpro/blob/main/docs/connect-claude-code.md) ·
-[tools](https://github.com/deBilla/drawpro/blob/main/docs/mcp-tools.md) ·
-[diagram specs](https://github.com/deBilla/drawpro/blob/main/docs/diagram-specs.md) ·
-[privacy](https://github.com/deBilla/drawpro/blob/main/docs/privacy.md)
+Claude describes what connects to what; layout, sizing, text wrapping and arrow
+binding are derived. Diagrams are sealed on this machine before they are sent —
+which is why the server is local rather than hosted.
+
+**[Documentation](https://debilla.github.io/drawpro/)** ·
+[setup](https://debilla.github.io/drawpro/docs/connect-claude-code.html) ·
+[tools](https://debilla.github.io/drawpro/docs/mcp-tools.html) ·
+[diagram specs](https://debilla.github.io/drawpro/docs/diagram-specs.html) ·
+[privacy](https://debilla.github.io/drawpro/docs/privacy.html)
+
+**[33/33 eval checks passing](https://debilla.github.io/drawpro/evals.html)** — the
+suite drives this server over a real MCP session and grades what comes out.
+Reproducible with no account and no API key:
+`npm run eval --workspace @drawpro/mcp`.
 
 ## Setup
 

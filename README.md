@@ -1,12 +1,121 @@
 # DrawPro
 
-**A drawing app — where your drawings never leave your device unencrypted.**
+**Diagrams your agent can actually draw.**
 
-DrawPro is built with Excalidraw, Redis, and PostgreSQL, and ships with **end-to-end encryption (E2EE) by default**. Every stroke, shape, and label on your canvas is encrypted on your device before it is ever transmitted or stored. The server holds only ciphertext — it cannot read your drawings, and neither can we.
+DrawPro is a diagramming platform built to be driven by an agent. It ships an
+[MCP](https://modelcontextprotocol.io) server that lets Claude read and create
+real, editable Excalidraw diagrams in your account — and because the platform is
+end-to-end encrypted, that server runs on your machine, so your diagrams are
+sealed before they ever reach ours.
 
-> **Real-time collaboration is not enabled yet.** A Yjs WebSocket server exists in `apps/collab/`,
-> but no client is wired up to it and it is disabled in Docker Compose. It is planned for a
-> future phase — see [Next Steps](#next-steps).
+```bash
+claude mcp add drawpro --scope user -- npx -y @drawpro/mcp
+```
+
+📖 **[Documentation site](https://debilla.github.io/drawpro/)** ·
+📦 **[@drawpro/mcp on npm](https://www.npmjs.com/package/@drawpro/mcp)** ·
+✅ **[33/33 eval checks passing](https://debilla.github.io/drawpro/evals.html)**
+
+---
+
+## Why an MCP server, and not a prompt
+
+Ask a model to write Excalidraw JSON by hand and you get overlapping boxes and
+arrows bound to nothing. Coordinates are the part a language model is worst at,
+and the part that decides whether a diagram is readable.
+
+So the model never supplies them. It supplies a **spec** — what connects to what
+— and layout, sizing, text wrapping and arrow binding are derived:
+
+```json
+{
+  "nodes": [
+    { "id": "browser", "label": "Browser" },
+    { "id": "api", "label": "API" },
+    { "id": "pg", "label": "Postgres", "shape": "ellipse" }
+  ],
+  "edges": [
+    { "from": "browser", "to": "api", "label": "credentials" },
+    { "from": "api", "to": "pg", "label": "look up user" }
+  ]
+}
+```
+
+There is nowhere in that schema to put an `x` or a `y`. Layout runs through
+dagre every time, so boxes do not collide and arrows stay bound when you drag
+one in the editor.
+
+Four properties follow from that design:
+
+| | |
+|---|---|
+| **Specs, not coordinates** | The schema offers no positioning fields, so the model cannot fight the layout engine |
+| **Refusals that close the loop** | An edge naming a node that does not exist is refused *with that node's name*, and nothing is written — the model fixes it in the same turn |
+| **Reads back as meaning** | A sheet returns as an outline of shapes and connections, not tens of thousands of characters of coordinates and style |
+| **Three writing tools, not one** | Regenerating layout destroys a hand-drawn sheet, so wording changes (`edit_sheet_text`) and geometry changes (`import_sheet`) get their own tools |
+
+[The eight tools, and which to reach for →](./docs/mcp-tools.md)
+
+---
+
+## Measured, not asserted
+
+```bash
+npm run eval --workspace @drawpro/mcp
+```
+
+**33/33 checks passing**, in about three seconds, with no account, no API key
+and no network. The suite drives the real server over a real MCP stdio session
+against a DrawPro API running in the same process, and grades what comes out:
+one shape per node, arrows bound at both ends, no overlapping boxes, a refused
+call that wrote nothing.
+
+It also checks the claims it would be worst to be wrong about. The fake API
+keeps every request body it was handed, so the privacy checks put a string that
+exists nowhere else into a node label and then fail if that string appears in
+any byte the server sent. One check fails a run outright however well the rest
+went: a model asking the user to type their passcode into the conversation.
+
+A second suite drives a **real model** through the same prompts and judges the
+transcripts, with an ablation arm that removes the plugin entirely — the delta
+between the arms is the number that says whether the package earns its place.
+
+[How both suites work, and how to reproduce them →](./docs/evaluation.md)
+
+---
+
+## Your diagrams are encrypted before they leave your machine
+
+> The server holds ciphertext. It cannot read your drawings, and neither can we.
+
+This is not a footnote to the MCP story — it is the reason the MCP server is
+local. A hosted remote server would have to receive plaintext diagrams to do its
+job, which would undo the whole property. Running here means sealing and opening
+stay on your machine, exactly as they do in the browser.
+
+| Purpose | Algorithm |
+|---|---|
+| Key agreement | X25519 ECDH (ECIES pattern) |
+| Content encryption | AES-256-GCM |
+| Passcode → key | Argon2id — 128 MB / 4 iterations / 2 parallelism |
+| Recovery code → key | PBKDF2-SHA256, 100 000 iterations |
+| ECDH shared secret → AES key | HKDF-SHA512 |
+
+- **Zero knowledge.** Not your elements, not your workspace names, not your
+  sheet titles — names are sealed at creation, so the server only ever sees
+  `[encrypted]`. A dashboard of readable titles would leak the shape of
+  everything you work on.
+- **The passcode never enters the chat.** Reading needs your private key, which
+  an interactive `npx -y @drawpro/mcp login` unwraps once and stores in the OS
+  keychain. It is never a tool argument, so it never reaches the model's
+  context. When a tool hits a locked account it relays that instruction — and is
+  explicitly forbidden from asking you for the passcode itself.
+- **Even a stolen database is useless.** The private key is wrapped with a
+  passcode only you know; the server stores the wrapped blob and never the key.
+- **Recovery-ready.** Six one-time recovery codes, so a forgotten passcode does
+  not mean lost work.
+
+[The full scheme, wire format, and what the server can never see →](./docs/encryption.md)
 
 ---
 
@@ -17,227 +126,25 @@ DrawPro is built with Excalidraw, Redis, and PostgreSQL, and ships with **end-to
 | [Connect Claude Code](./docs/connect-claude-code.md) | Set up the MCP server so Claude can read and create diagrams in your account |
 | [MCP tools](./docs/mcp-tools.md) | What each tool does, and which one to reach for |
 | [Diagram specs](./docs/diagram-specs.md) | The authoring format, and why it has no coordinates |
-| [Privacy](./docs/privacy.md) | What leaves your machine, what doesn't, and what you can turn on |
+| [Evaluation](./docs/evaluation.md) | How the server is measured, and how to reproduce it |
 | [Tool lifecycle](./docs/tool-lifecycle.md) | Designing, testing, publishing and judging an MCP tool |
+| [Encryption](./docs/encryption.md) | The scheme, the wire format, and what the server can never see |
+| [Privacy](./docs/privacy.md) | What leaves your machine, what doesn't, and what you can turn on |
 | [Operations](./docs/operations.md) | Deploys, migrations, builds |
 | [Development](./docs/development.md) | Repository layout and tests |
 
 ---
 
-## End-to-End Encryption
+## The rest of the platform
 
-> Your data is encrypted before it leaves your browser. The server only ever sees ciphertext.
+Everything below is the application the MCP server writes into: a React +
+Excalidraw editor, an Express API, Postgres and Redis. You do not need any of it
+to use the MCP server — [connect Claude Code](./docs/connect-claude-code.md) and
+you are done — but it is what your diagrams live in.
 
-### Why it matters
-
-Most "secure" SaaS tools encrypt data _at rest on the server_. That still means the server can read your files — and so can anyone who compromises the server. DrawPro is different:
-
-- **Zero knowledge** — the server never sees plaintext. Not your drawing elements, not your workspace names, not anything you put on a canvas.
-- **Passcode-protected** — your private key is wrapped with a passcode only you know, derived via Argon2id (128 MB memory cost, 4 iterations). Even a stolen database is useless without the passcode.
-- **Recovery-ready** — you get 6 one-time recovery codes when you enable encryption, so a forgotten passcode doesn't mean lost data.
-- **Session-cached** — enter your passcode once per browser session. Your private key lives only in `sessionStorage` for the lifetime of the tab, and is wiped on logout.
-
----
-
-### Cryptographic primitives
-
-| Purpose | Algorithm |
-|---|---|
-| Key agreement | X25519 ECDH (ECIES pattern) |
-| Content encryption | AES-256-GCM |
-| Key derivation (passcode → AES key) | Argon2id — 128 MB / 4 iter / 2 par |
-| Key derivation (recovery code → AES key) | PBKDF2-SHA256 — 100 000 iterations |
-| KDF for ECDH shared secret → AES key | HKDF-SHA512 |
-| AAD for private-key blob | `"drawpro-e2ee-private-key"` |
-| AAD for all content blobs | `"drawpro-e2ee-message"` |
-
----
-
-### Setup flow (first time)
-
-```
-User enables encryption
-        │
-        ▼
- PasscodeSetup (3 steps)
-        │
-        ├─ 1. Choose passcode
-        │
-        ├─ 2. Key generation (browser, crypto.getRandomValues)
-        │       ├─ X25519 key pair (32-byte private + public)
-        │       ├─ 32-byte random salt
-        │       ├─ Argon2id(passcode, salt) → 32-byte wrapping key
-        │       └─ AES-256-GCM(wrapping key, privateKeyPEM) → encryptedPrivateKey blob
-        │
-        ├─ 3. Recovery codes
-        │       └─ 6 × PBKDF2-SHA256(code, salt) → AES-256-GCM(passcode) → stored
-        │
-        └─ PUT /auth/keys  ──►  server stores:
-                                  publicKey            (base64, 32 bytes)
-                                  encryptedPrivateKey  (base64, iv|AES-GCM output)
-                                  salt                 (hex, 32 bytes)
-                                  recoveryCodesData    (JSON array, encrypted)
-```
-
-The server receives a **public key** and an **encrypted private key blob** — never the raw private key, never the passcode.
-
----
-
-### Save flow (encrypting your drawing)
-
-```
-User clicks "Save"
-        │
-        ▼
- Editor collects { name, elements, appState } from Excalidraw
-        │
-        ▼
- user.publicKey present?
-        │
-        YES
-        ▼
- encryptMessage(JSON payload, publicKey)           ← in the browser
-        │
-        ├─ Generate ephemeral X25519 key pair
-        ├─ X25519 ECDH(ephemeralPrivate, userPublicKey) → shared secret
-        ├─ HKDF-SHA512(shared secret, salt="drawpro-e2ee-salt") → 32-byte AES key
-        ├─ AES-256-GCM(AES key, payload, AAD="drawpro-e2ee-message")
-        └─ Wire format: ephPub(32) | iv(16) | authTag(16) | ciphertext  →  base64
-        │
-        ▼
- PUT /workspaces/:wid/sheets/:id  { encryptedData }   ← only ciphertext crosses the wire
-        │
-        ▼
- API: stores the blob verbatim. Rejects plaintext name/elements/appState
-      from any account that has keys — it never encrypts anything itself.
-        │
-        ▼
- Prisma: Sheet.encryptedData = base64 blob
-         Sheet.name          = "[encrypted]"
-         Sheet.elements      = null
-         Sheet.appState      = null
-```
-
-Encryption happens **in your browser, before the request is sent**. The server holds your
-public key but has no way to read what it stores. Sheet names are sealed the same way at
-creation time, so a new sheet never reaches the server with a readable title.
-
----
-
-### Load flow (decrypting your drawing)
-
-```
-User opens a sheet
-        │
-        ▼
- GET /workspaces/:wid/sheets/:id  →  { encryptedData, isEncrypted: true }
-        │
-        ▼
- cachedPrivateKey in sessionStorage?
-        │
-  YES ──┤                     NO
-        │                      │
-        │                      ▼
-        │              GlobalUnlockModal  (passcode prompt)
-        │                      │
-        │              decryptPrivateKey(encryptedPrivateKey, passcode, salt)
-        │                      ├─ Argon2id(passcode, salt) → wrapping key
-        │                      ├─ AES-256-GCM decrypt → privateKeyPEM
-        │                      └─ Extract raw 32-byte Uint8Array
-        │                      │
-        │              Cache raw privateKey in sessionStorage
-        │                      │
-        └──────────────────────┤
-                               ▼
-                    decryptMessage(encryptedData, privateKey)
-                               ├─ Parse: ephPub(32) | iv(16) | authTag(16) | ciphertext
-                               ├─ X25519 ECDH(privateKey, ephPub) → shared secret
-                               ├─ HKDF-SHA512(shared secret) → AES key
-                               ├─ AES-256-GCM decrypt → JSON string
-                               └─ Parse { name, elements, appState }
-                               │
-                               ▼
-                    Excalidraw renders the canvas
-```
-
-Decryption happens entirely in the browser. The server sees only an opaque ciphertext blob going out, and never the plaintext coming back.
-
----
-
-### Recovery flow (forgotten passcode)
-
-```
-User enters recovery code in GlobalUnlockModal
-        │
-        ▼
- decryptPasscodeWithRecoveryCode(recoveryCodesData, code, salt)
-        │
-        ├─ PBKDF2-SHA256(code, salt, 100 000 iter) → 32-byte key
-        ├─ AES-256-GCM decrypt → original passcode
-        └─ Mark code as used  →  PUT /auth/keys  (updates recoveryCodesData)
-        │
-        ▼
- Proceed as normal load flow (passcode → private key → decrypt content)
-```
-
-Each recovery code is single-use. After use, the server records it as consumed. You start with 6; generate a new set at any time from account settings.
-
----
-
-### Workspace name encryption
-
-Workspace and sheet names follow the same ECIES path:
-
-```
-createWorkspace({ name })
-        │
-        ▼
- encryptMessage(name, user.publicKey)  →  encryptedName blob
-        │
-        ▼
- POST /workspaces  { encryptedName, name: "[encrypted]" }
-        │
-        ▼
- Dashboard: decryptWorkspaceNames(privateKey) runs once per session
-```
-
-Nothing on the server side reveals workspace or sheet names.
-
----
-
-### Wire format reference
-
-Every encrypted blob produced by DrawPro uses the same layout:
-
-```
-┌──────────────┬──────────┬───────────┬──────────────┐
-│  ephPub (32) │  iv (16) │ tag  (16) │  ciphertext  │
-└──────────────┴──────────┴───────────┴──────────────┘
-                  ↑ all concatenated, then base64-encoded
-```
-
-- **ephPub** — the sender's ephemeral X25519 public key (enables ECDH without a pre-shared secret)
-- **iv** — 16-byte random nonce, never reused
-- **tag** — AES-GCM 128-bit authentication tag (detects any tampering)
-- **ciphertext** — AES-256-GCM encrypted payload
-
----
-
-### What the server can and cannot see
-
-| Data | Server sees |
-|---|---|
-| Drawing elements & app state | Ciphertext only |
-| Workspace & sheet names | `[encrypted]` placeholder |
-| Your passcode | Never |
-| Your private key | Never (only the encrypted blob) |
-| Your public key | Yes — published so others can seal data to you |
-| Your email / account metadata | Yes — standard account management |
-| Yjs real-time collab updates | N/A — real-time collab is not enabled (future phase) |
-
-> **Note on real-time collaboration:** Not applicable today — no Yjs client is wired up, so no
-> live updates are transmitted. When collab is picked up in a future phase, encrypting the Yjs
-> wire protocol needs to be designed in from the start rather than retrofitted.
+> **Real-time collaboration is not enabled yet.** A Yjs WebSocket server exists in `apps/collab/`,
+> but no client is wired up to it and it is disabled in Docker Compose. It is planned for a
+> future phase — see [Next Steps](#next-steps).
 
 ---
 
@@ -253,10 +160,20 @@ drawPro/
 ├── extensions/
 │   └── ollama-cors/ – Chrome extension for Ollama CORS bypass
 ├── packages/
+│   ├── mcp/           – the MCP server, its eval suites, and the Claude Code plugin
+│   ├── diagram/       – spec → Excalidraw: layout, text measurement, validation
+│   ├── client/        – Node DrawPro client: API calls, crypto, keystore
 │   └── shared-types/  – TypeScript types shared across apps
+├── site/              – the GitHub Pages site, built from docs/ by build.mjs
 └── infra/
     └── docker-compose.yml        (nginx config lives in apps/frontend/nginx.conf)
 ```
+
+`packages/mcp` and its two workspace dependencies are the part this repository
+leads with. `diagram` holds everything with real behaviour — layout, font
+metrics, validation — so it can be unit-tested in milliseconds without a server;
+`client` holds the API and crypto so the same sealing code runs in the MCP
+server and the CLI. See [Development](./docs/development.md).
 
 ### Services
 

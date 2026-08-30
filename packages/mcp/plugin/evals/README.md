@@ -15,9 +15,18 @@ not earning its context.
 `--no-publish` keeps the HTML report local. Worth defaulting to, since these
 runs put diagrams of your architecture into prompts and reports.
 
-**Currently blocked:** `claude plugin eval` is in early access and is not
-enabled on this account. The cases below are written and ready; they cannot be
-executed until access is granted.
+**`claude plugin eval` is in early access and is not enabled on this account.**
+Rather than leave these cases unexecutable, `../../eval/agent/` runs the same
+prompts and the same graders through the Claude API:
+
+```bash
+npm run eval:agent --workspace @drawpro/mcp
+```
+
+There is one copy of every prompt and rubric — this directory. Both runners read
+it, so the numbers stay comparable if access is granted later. The free,
+credential-less suite that gates CI is the deterministic one in `../../eval/`;
+see `../../eval/README.md` for why both exist.
 
 ## Cases
 

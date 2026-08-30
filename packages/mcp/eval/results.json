@@ -1,0 +1,242 @@
+{
+  "generatedAt": "2026-08-30T13:47:27.741Z",
+  "version": "0.6.5",
+  "durationSeconds": 2.8,
+  "passed": 33,
+  "total": 33,
+  "percent": 100,
+  "criticalFailures": [],
+  "suites": [
+    {
+      "name": "contract",
+      "description": "The tool inventory a model is offered, and what it promises.",
+      "checks": [
+        {
+          "id": "inventory",
+          "title": "exposes exactly the eight documented tools",
+          "guards": "A tool that exists but is undocumented gets used by guesswork.",
+          "pass": true
+        },
+        {
+          "id": "descriptions",
+          "title": "every tool describes itself in more than a label",
+          "guards": "Selection between eight tools is made from these strings alone.",
+          "pass": true
+        },
+        {
+          "id": "no-layout-fields",
+          "title": "the node schema offers no place to put coordinates",
+          "guards": "Hand-supplied geometry is what produces the overlapping boxes.",
+          "pass": true
+        },
+        {
+          "id": "destructive-tool-says-so",
+          "title": "update_diagram announces that it overwrites, and names the tool to run first",
+          "guards": "Silent wholesale replacement of a hand-drawn sheet is unrecoverable.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "safe-alternative-is-findable",
+          "title": "edit_sheet_text points at itself as the safe path for a drawn sheet",
+          "guards": "Otherwise every wording fix reaches for the tool that regenerates layout.",
+          "pass": true
+        },
+        {
+          "id": "validate-is-side-effect-free",
+          "title": "validate_spec needs no workspace, so it cannot write anywhere",
+          "guards": "A dry run that could write is not a dry run.",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "generation",
+      "description": "A coordinate-free spec becomes a diagram that renders cleanly.",
+      "checks": [
+        {
+          "id": "creates-and-links",
+          "title": "a valid spec creates a sheet and returns a link to it",
+          "guards": "Without the link the user cannot find what was just made.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "node-per-participant",
+          "title": "one shape per node in the spec",
+          "guards": "A dropped participant is a diagram that lies about the system.",
+          "pass": true
+        },
+        {
+          "id": "edge-per-connection",
+          "title": "one arrow per edge in the spec",
+          "guards": "A dropped edge is a connection the reader will not know exists.",
+          "pass": true
+        },
+        {
+          "id": "labels-survive",
+          "title": "every node label appears in the scene",
+          "guards": "Boxes without their labels are the failure this tool replaces.",
+          "pass": true
+        },
+        {
+          "id": "arrows-bound",
+          "title": "every arrow is bound to a shape at both ends",
+          "guards": "Unbound arrows detach the moment anyone moves a box in the editor.",
+          "pass": true
+        },
+        {
+          "id": "scene-invariants",
+          "title": "the generated scene passes its own structural validator",
+          "guards": "Broken bindings and spilled text render as a visibly wrong diagram.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "no-overlapping-boxes",
+          "title": "no two node boxes overlap",
+          "guards": "Overlapping boxes are the single most common hand-written-JSON defect.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "title-rendered",
+          "title": "a spec title becomes a title element",
+          "guards": "An untitled sheet in a list of sheets is unidentifiable.",
+          "pass": true
+        },
+        {
+          "id": "count-is-truthful",
+          "title": "the element count in the reply matches the sheet that was written",
+          "guards": "A model relays this number to the user; a wrong one is a quiet lie.",
+          "pass": true
+        },
+        {
+          "id": "round-trips",
+          "title": "read_sheet reports back every participant it just wrote",
+          "guards": "Extending an existing diagram starts by reading it.",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "privacy",
+      "description": "Nothing readable leaves the machine, and the passcode is never requested.",
+      "checks": [
+        {
+          "id": "labels-not-on-the-wire",
+          "title": "no node label, edge label, or title appears in any request body",
+          "guards": "This is the entire end-to-end encryption claim. If it fails, the claim is false.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "sheet-name-sealed",
+          "title": "the sheet name sent to the server is the [encrypted] sentinel",
+          "guards": "Sheet names are content: a dashboard of readable titles leaks the whole map.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "ciphertext-is-real",
+          "title": "the blob the server stored decrypts back to the diagram",
+          "guards": "Sending nothing readable is only useful if the real content is in there.",
+          "pass": true
+        },
+        {
+          "id": "no-content-in-transit-metadata",
+          "title": "the workspace id is sent, but no diagram content rides along with it",
+          "guards": "Metadata leaks are how \"encrypted\" products turn out to be readable.",
+          "pass": true
+        },
+        {
+          "id": "locked-explains-itself",
+          "title": "a locked read returns the exact unlock command instead of an opaque error",
+          "guards": "An unexplained failure gets retried forever or reported as a broken product.",
+          "pass": true
+        },
+        {
+          "id": "locked-says-no-restart",
+          "title": "the message says the same tool can simply be retried afterwards",
+          "guards": "Otherwise the model tells the user to restart Claude, which is not needed.",
+          "pass": true
+        },
+        {
+          "id": "never-asks-for-the-passcode",
+          "title": "the message forbids asking the user for their passcode",
+          "guards": "The passcode is the account master secret. A model that asks for it puts it in a transcript, which is exactly what the out-of-band unlock exists to prevent.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "locked-degrades-softly",
+          "title": "listing still returns ids while names stay unreadable",
+          "guards": "A locked account should be navigable, not bricked.",
+          "pass": true
+        }
+      ]
+    },
+    {
+      "name": "recovery",
+      "description": "Bad calls are refused with enough information to fix them.",
+      "checks": [
+        {
+          "id": "names-the-broken-thing",
+          "title": "a dangling edge is refused by naming the node that is missing",
+          "guards": "Without the name, the fix is a guess and the model retries blind.",
+          "pass": true
+        },
+        {
+          "id": "refusal-writes-nothing",
+          "title": "a refused create leaves no sheet behind",
+          "guards": "A half-created diagram is worse than none — nobody knows it is there.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "correction-succeeds",
+          "title": "the corrected spec the message implies is accepted",
+          "guards": "A refusal that cannot be satisfied is a dead end dressed as guidance.",
+          "pass": true
+        },
+        {
+          "id": "dry-run-finds-both",
+          "title": "validate_spec reports the duplicate id and the dangling edge",
+          "guards": "Checking before writing is only worth doing if it finds what writing would.",
+          "pass": true
+        },
+        {
+          "id": "dry-run-is-dry",
+          "title": "validate_spec creates nothing",
+          "guards": "A dry run with side effects is a trap.",
+          "pass": true
+        },
+        {
+          "id": "all-or-nothing-edit",
+          "title": "one unmatched find leaves every element untouched",
+          "guards": "A partially applied edit is invisible until someone re-reads the sheet.",
+          "critical": true,
+          "pass": true
+        },
+        {
+          "id": "says-what-did-not-match",
+          "title": "the refusal reports that nothing was written",
+          "guards": "Silence here reads as success and the wrong text ships.",
+          "pass": true
+        },
+        {
+          "id": "edit-preserves-geometry",
+          "title": "a successful edit changes the text and no coordinate",
+          "guards": "Rewriting a label must not silently redraw a hand-placed diagram.",
+          "pass": true
+        },
+        {
+          "id": "missing-file-explains",
+          "title": "importing a file that is not there explains itself instead of crashing",
+          "guards": "A stack trace here tells the model nothing it can act on.",
+          "pass": true
+        }
+      ]
+    }
+  ]
+}

@@ -23,11 +23,18 @@ directory and bundling would break unlocking.
 ## Tests
 
 ```bash
+npm run eval --workspace @drawpro/mcp        # the MCP suite — no account needed
 npm test --workspace @drawpro/diagram        # golden, describe, fit
 npx tsx packages/client/src/selftest.ts      # crypto round trips
 npx tsx packages/client/tests/prompt.ts      # hidden passcode input
-DRAWPRO_TOKEN=dp_live_... npx tsx packages/mcp/tests/smoke.ts
+DRAWPRO_TOKEN=dp_live_... npx tsx packages/mcp/tests/smoke.ts   # against production
 ```
+
+The first two are what CI runs, because they need nothing. `smoke.ts` needs a
+real token and talks to production, so it stays a local check; the eval covers
+the same protocol ground against a DrawPro API running in-process, plus the
+artefacts and refusals `smoke.ts` never looks at. See
+[Evaluation](./evaluation.md).
 
 ### Golden tests
 
@@ -52,7 +59,7 @@ silently skipped. Two bugs hid behind exactly this: label recovery in
 shaped like a hand-drawn diagram.
 
 The same applies to the MCP server: compiling proves nothing about protocol
-behaviour, so `smoke.ts` spawns the server and speaks MCP to it.
+behaviour, so both `smoke.ts` and the eval spawn the server and speak MCP to it.
 
 ## Font metrics
 

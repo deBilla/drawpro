@@ -1,0 +1,65 @@
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'site/**'
+      - 'packages/mcp/**'
+      - 'README.md'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# Pages needs id-token to deploy; nothing here writes to the repository.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one that is mid-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/configure-pages@v5
+        id: pages
+
+      # Run the eval immediately before building, so the score published on the
+      # site is one this commit actually produced. A failing suite fails the
+      # deploy on purpose: a scorecard is worse than no scorecard if the number
+      # on it is stale or wrong.
+      - name: MCP eval (deterministic)
+        run: npm run eval --workspace @drawpro/mcp
+
+      - name: Build site
+        run: node site/build.mjs
+        env:
+          SITE_BASE: ${{ steps.pages.outputs.base_path }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/_site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
