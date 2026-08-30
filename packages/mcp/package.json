@@ -1,7 +1,7 @@
 {
   "name": "@drawpro/mcp",
   "version": "0.6.5",
-  "description": "MCP server for DrawPro \u2014 read and create end-to-end encrypted Excalidraw diagrams from Claude",
+  "description": "MCP server for DrawPro — read and create end-to-end encrypted Excalidraw diagrams from Claude",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -31,7 +31,10 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "eval": "tsx eval/run.ts",
+    "eval:agent": "tsx eval/agent/run.ts",
+    "test": "tsx tests/smoke.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.4",
@@ -39,5 +42,9 @@
     "@phi-ag/argon2": "^0.5.19",
     "fractional-indexing": "^3.2.0",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
+    "tsx": "^4.16.2"
   }
 }
