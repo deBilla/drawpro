@@ -11,6 +11,7 @@ import type {
   ApiTokenSummary,
   CreatedApiToken,
   CreateApiTokenInput,
+  GoogleAuthInput,
   User,
   ApiResponse,
 } from '@drawpro/shared-types';
@@ -80,6 +81,10 @@ export const authApi = {
 
   login: (body: { email: string; password: string }) =>
     apiClient.post<ApiResponse<AuthTokens>>('/auth/login', body).then((r) => r.data.data),
+
+  /** Exchange a Firebase ID token for DrawPro session cookies. */
+  google: (body: GoogleAuthInput) =>
+    apiClient.post<ApiResponse<AuthTokens>>('/auth/google', body).then((r) => r.data.data),
 
   logout: () =>
     apiClient.post('/auth/logout'),

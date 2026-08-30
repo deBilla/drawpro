@@ -2,6 +2,8 @@ node_modules/
 dist/
 dist-electron/
 .env
+.env.*
+!.env.example
 *.env.local
 .turbo/
 .DS_Store
@@ -26,3 +28,14 @@ apps/desktop/icon.iconset/
 *.cer
 *.provisionprofile
 *.mobileprovision
+
+# Service account keys and PEMs. The Firebase admin credential is the one that
+# matters here: it can mint tokens for any user in the project, so it lives in
+# apps/api-ts/.env locally and in GitHub Secrets for deploys — never in git.
+*-firebase-adminsdk-*.json
+*serviceAccount*.json
+*service-account*.json
+credentials.json
+*.pem
+*.key
+*.p8

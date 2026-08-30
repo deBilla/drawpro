@@ -348,6 +348,23 @@ docker compose -f infra/docker-compose.yml --profile collab up
 - Refresh token rotation: old token is invalidated in Redis on every `/auth/refresh` call
 - Token hashes stored as `rt:{userId}:{tokenId}` in Redis with TTL
 
+**Google sign-in (Firebase).** Firebase answers exactly one question — "did this
+browser really sign in as this Google account?" — and is then out of the picture.
+The browser runs `signInWithPopup`, posts the resulting ID token to
+`POST /auth/google`, and the API verifies it with `firebase-admin` before issuing
+the *same* session cookies a password login produces. Consequences:
+
+- Google users are indistinguishable to every other route; refresh rotation, API
+  tokens and the E2EE passcode gate work unchanged.
+- The Firebase session is signed out immediately after the token is read, so there
+  is never a second source of truth for "am I logged in".
+- `User.passwordHash` is nullable: a Google-only account has none, and `/auth/login`
+  answers such an address with a 409 pointing at the Google button.
+- Accounts are linked by email **only when Google reports it verified** — otherwise
+  a token for an unverified address could claim someone else's account.
+- Unset `FIREBASE_*` (server) or `VITE_FIREBASE_*` (client) disables the feature:
+  the API returns 503 on `/auth/google` and the button hides itself.
+
 ### Collab (Yjs) — future phase, not active
 > The server below is implemented but has **no client**: there are no Yjs imports in
 > `apps/frontend/src`. It is excluded from `npm run dev`/`build` and gated behind a Compose
@@ -377,6 +394,7 @@ docker compose -f infra/docker-compose.yml --profile collab up
 |--------|------|-------------|
 | POST | `/auth/register` | `{email, password, name?}` → tokens |
 | POST | `/auth/login` | `{email, password}` → tokens |
+| POST | `/auth/google` | `{idToken}` (Firebase) → tokens; creates or links the account |
 | POST | `/auth/refresh` | `{refreshToken}` → new tokens |
 | POST | `/auth/logout` | invalidates refresh token |
 | GET  | `/auth/me` | current user |
@@ -479,7 +497,8 @@ npm run dev          # launches Electron loading localhost:3000
 
 ## Next Steps
 
-- [ ] Supabase or email-based magic link auth
+- [x] Google sign-in via Firebase
+- [ ] Email-based magic link auth
 - [ ] Workspace invitations / member management
 - [ ] Sheet export to PNG/SVG via MinIO
 - [ ] Row-level security policies if migrating to Supabase

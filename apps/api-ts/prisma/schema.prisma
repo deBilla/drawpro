@@ -11,8 +11,14 @@ datasource db {
 model User {
   id                  String   @id @default(cuid())
   email               String   @unique
-  passwordHash        String
+  /// Null for accounts created through an identity provider (Google) that have
+  /// never set a local password. Such accounts can only sign in via that provider.
+  passwordHash        String?
   name                String?
+  /// Firebase UID of the linked Google identity. Null for password-only accounts.
+  googleId            String?  @unique
+  /// Profile picture URL supplied by the identity provider.
+  avatarUrl           String?
   // E2EE fields (null until user sets up encryption)
   publicKey           String? // base64 raw 32-byte X25519 public key
   encryptedPrivateKey String? // base64 blob: iv(16)|AES-GCM(argon2id(passcode), pem)

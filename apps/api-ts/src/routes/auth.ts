@@ -8,7 +8,8 @@ import { prisma } from '../lib/prisma';
 import { redis } from '../lib/redis';
 import { validate } from '../middleware/validate';
 import { requireAuth, AuthRequest } from '../middleware/auth';
-import { ENV } from '../config/env';
+import { verifyGoogleIdToken } from '../lib/firebase';
+import { ENV, GOOGLE_AUTH_ENABLED } from '../config/env';
 
 const router = Router();
 
@@ -35,6 +36,11 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
+const googleSchema = z.object({
+  /** Firebase ID token from the browser SDK's signInWithPopup. */
+  idToken: z.string().min(1),
+});
+
 const keysSchema = z.object({
   publicKey: z.string().min(1),
   encryptedPrivateKey: z.string().min(1),
@@ -48,6 +54,7 @@ const USER_SELECT = {
   id: true,
   email: true,
   name: true,
+  avatarUrl: true,
   publicKey: true,
   encryptedPrivateKey: true,
   salt: true,
@@ -155,7 +162,16 @@ router.post('/login', authLimiter, validate(loginSchema), async (req: Request, r
       where: { email },
       select: { ...USER_SELECT, passwordHash: true },
     });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    if (!user.passwordHash) {
+      // Google-only account. Say so plainly — the email is already known to
+      // whoever typed it, so this leaks nothing they could not confirm anyway,
+      // and the alternative is a user stuck on 'Invalid credentials' forever.
+      return res.status(409).json({ error: 'This account uses Google Sign-In. Continue with Google instead.' });
+    }
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
@@ -167,6 +183,91 @@ router.post('/login', authLimiter, validate(loginSchema), async (req: Request, r
     return res.json({ data: { user: safeUser } });
   } catch (err) {
     console.error('[auth/login]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /auth/google — exchange a Firebase ID token for a DrawPro session
+//
+// Firebase only answers "is this really the Google account it claims to be?".
+// Everything after that is ordinary DrawPro session issuance, so a Google user
+// is indistinguishable from a password user to the rest of the API.
+router.post('/google', authLimiter, validate(googleSchema), async (req: Request, res: Response) => {
+  try {
+    if (!GOOGLE_AUTH_ENABLED) {
+      return res.status(503).json({ error: 'Google sign-in is not configured on this server' });
+    }
+
+    const { idToken } = req.body as { idToken: string };
+
+    const identity = await verifyGoogleIdToken(idToken);
+    if (!identity) {
+      return res.status(401).json({ error: 'Invalid or expired Google sign-in' });
+    }
+
+    // Linking an existing account by email is only safe when Google vouches for
+    // the address. Without this check, anyone who can mint a token for an
+    // unverified address could claim someone else's DrawPro account.
+    if (!identity.emailVerified) {
+      return res.status(403).json({ error: 'Your Google email address is not verified' });
+    }
+
+    let user = await prisma.user.findUnique({
+      where: { googleId: identity.uid },
+      select: USER_SELECT,
+    });
+
+    if (!user) {
+      const byEmail = await prisma.user.findUnique({
+        where: { email: identity.email },
+        select: { id: true, googleId: true },
+      });
+
+      if (byEmail && byEmail.googleId && byEmail.googleId !== identity.uid) {
+        // The address is already bound to a different Google identity.
+        return res.status(409).json({ error: 'This email is linked to another Google account' });
+      }
+
+      if (byEmail) {
+        // Existing password account, same verified address → link the identity.
+        user = await prisma.user.update({
+          where: { id: byEmail.id },
+          data: {
+            googleId: identity.uid,
+            // Never clobber a name or picture the user already chose here.
+            name: undefined,
+            avatarUrl: identity.picture ?? undefined,
+          },
+          select: USER_SELECT,
+        });
+      } else {
+        // Brand new account. passwordHash stays null until they set one.
+        user = await prisma.user.create({
+          data: {
+            email: identity.email,
+            googleId: identity.uid,
+            name: identity.name,
+            avatarUrl: identity.picture,
+          },
+          select: USER_SELECT,
+        });
+      }
+    } else if (identity.picture && identity.picture !== user.avatarUrl) {
+      // Google rotates picture URLs; keep ours fresh so avatars don't 404.
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { avatarUrl: identity.picture },
+        select: USER_SELECT,
+      });
+    }
+
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = await generateRefreshToken(user.id);
+    setAuthCookies(res, accessToken, refreshToken);
+
+    return res.json({ data: { user } });
+  } catch (err) {
+    console.error('[auth/google]', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -2,6 +2,7 @@ import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,6 +11,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -54,10 +56,11 @@ export default function Login() {
             />
           </label>
           {error && <p style={styles.error}>{error}</p>}
-          <button style={styles.button} type="submit" disabled={loading}>
+          <button style={styles.button} type="submit" disabled={loading || googleBusy}>
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        <GoogleSignInButton onError={setError} onBusyChange={setGoogleBusy} disabled={loading} />
         <p style={styles.footer}>
           No account? <Link to="/register">Register</Link>
         </p>

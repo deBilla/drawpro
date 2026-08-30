@@ -4,6 +4,8 @@ export interface User {
   id: string;
   email: string;
   name?: string | null;
+  /** Profile picture from the identity provider. Null for password-only accounts. */
+  avatarUrl?: string | null;
   /** base64 raw 32-byte X25519 public key. Null if encryption not set up. */
   publicKey?: string | null;
   /** base64 blob: iv(16)|AES-GCM(argon2id(passcode), pem). Null if encryption not set up. */
@@ -95,6 +97,11 @@ export interface RegisterInput {
 export interface LoginInput {
   email: string;
   password: string;
+}
+
+/** Body of POST /auth/google — a Firebase ID token from the browser SDK. */
+export interface GoogleAuthInput {
+  idToken: string;
 }
 
 export interface CreateWorkspaceInput {

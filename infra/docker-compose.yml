@@ -76,6 +76,12 @@ services:
     build:
       context: ..
       dockerfile: apps/frontend/Dockerfile
+      # Vite bakes these in at build time; unset means no Google sign-in button.
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
     restart: unless-stopped
     ports:
       - '3010:80'   # only exposed port

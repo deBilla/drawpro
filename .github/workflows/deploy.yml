@@ -56,6 +56,19 @@ jobs:
             printf 'DATABASE_URL=%s\n' '${{ secrets.DATABASE_URL }}' >> /tmp/api_env.tmp
             mv /tmp/api_env.tmp ~/drawpro-deployment/apps/api-ts/.env
 
+            # 2b. Same treatment for the Firebase service account. .env.example
+            # ships these blank, and blank means Google sign-in stays disabled,
+            # so they have to be replaced rather than merely appended.
+            # FIREBASE_PRIVATE_KEY is stored as a single line with literal \n:
+            # printf '%s' does not expand those, so the PEM survives the trip
+            # and dotenv turns them back into newlines on load.
+            grep -v -e '^FIREBASE_PROJECT_ID=' -e '^FIREBASE_CLIENT_EMAIL=' -e '^FIREBASE_PRIVATE_KEY=' \
+              ~/drawpro-deployment/apps/api-ts/.env > /tmp/api_env.tmp
+            printf 'FIREBASE_PROJECT_ID=%s\n'   '${{ secrets.FIREBASE_PROJECT_ID }}'   >> /tmp/api_env.tmp
+            printf 'FIREBASE_CLIENT_EMAIL=%s\n' '${{ secrets.FIREBASE_CLIENT_EMAIL }}' >> /tmp/api_env.tmp
+            printf 'FIREBASE_PRIVATE_KEY=\"%s\"\n' '${{ secrets.FIREBASE_PRIVATE_KEY }}' >> /tmp/api_env.tmp
+            mv /tmp/api_env.tmp ~/drawpro-deployment/apps/api-ts/.env
+
             # 3. Handle the collab app (copies example if it exists, otherwise creates empty file)
             if [ -f ~/drawpro-deployment/apps/collab/.env.example ]; then
               cp ~/drawpro-deployment/apps/collab/.env.example ~/drawpro-deployment/apps/collab/.env
@@ -68,6 +81,15 @@ jobs:
         run: |
           ssh ${{ secrets.SERVER_HOST }} '
             cd ~/drawpro-deployment
+            # Vite inlines env at build time, so the frontend image needs the
+            # Firebase web config here as build args — setting it at runtime is
+            # too late. Unset would build a working app with the Google button
+            # hidden, which is why these are exported rather than left to
+            # compose defaults. All four are public identifiers.
+            export VITE_FIREBASE_API_KEY="${{ secrets.VITE_FIREBASE_API_KEY }}"
+            export VITE_FIREBASE_AUTH_DOMAIN="${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}"
+            export VITE_FIREBASE_PROJECT_ID="${{ secrets.VITE_FIREBASE_PROJECT_ID }}"
+            export VITE_FIREBASE_APP_ID="${{ secrets.VITE_FIREBASE_APP_ID }}"
             docker compose -f infra/docker-compose.yml build --no-cache
           '
 

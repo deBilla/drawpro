@@ -11,6 +11,19 @@ FROM deps AS builder
 COPY . .
 # VITE_API_URL=/api → Axios routes through nginx proxy (no direct API port needed)
 ENV VITE_API_URL=/api
+
+# Vite inlines env at build time, so the Firebase web config has to arrive as
+# build args — not runtime env. Left empty, the app builds fine and simply hides
+# the "Continue with Google" button. These four values are public identifiers.
+ARG VITE_FIREBASE_API_KEY=
+ARG VITE_FIREBASE_AUTH_DOMAIN=
+ARG VITE_FIREBASE_PROJECT_ID=
+ARG VITE_FIREBASE_APP_ID=
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY \
+    VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN \
+    VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID \
+    VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
+
 RUN cd apps/frontend && npm run build
 
 FROM nginx:alpine AS runner
