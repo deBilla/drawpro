@@ -5,6 +5,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  # Pinned cloudflared release and its SHA-256 for linux-amd64.deb, from
+  # https://github.com/cloudflare/cloudflared/releases. Bump both together.
+  CLOUDFLARED_VERSION: "2026.10.2"
+  CLOUDFLARED_SHA256: "30a9a127c24ea8365fa8e11b13684128f34dd8a1137599aa00b4bebda1a0a083"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,7 +20,8 @@ jobs:
 
       - name: Install cloudflared
         run: |
-          curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
+          curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64.deb" -o cloudflared.deb
+          echo "${CLOUDFLARED_SHA256}  cloudflared.deb" | sha256sum --check --strict
           sudo dpkg -i cloudflared.deb
 
       - name: Setup SSH agent
