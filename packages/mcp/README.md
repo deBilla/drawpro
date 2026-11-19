@@ -94,6 +94,8 @@ passcode itself.
 | `list_sheets` | for names | same |
 | `read_sheet` | yes | returns a readable outline, not raw scene JSON |
 | `validate_spec` | no | no side effects; check before writing |
+| `preview_diagram` | no | renders a spec to PNG without saving anything |
+| `screenshot_sheet` | yes | renders a saved sheet to PNG, locally, so Claude can see what it drew |
 | `create_diagram` | no | returns a link to the new sheet |
 | `update_diagram` | no | replaces the sheet wholesale — regenerates layout |
 | `edit_sheet_text` | yes | rewrites named text in place, preserving every other element |

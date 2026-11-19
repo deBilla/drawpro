@@ -35,7 +35,7 @@ async function main() {
 
   const { tools } = await client.listTools();
   const names = tools.map((t) => t.name).sort();
-  check('server exposes the eight tools', names.length === 8, names.join(', '));
+  check('server exposes the ten tools', names.length === 10, names.join(', '));
   check(
     'tool names are as documented',
     JSON.stringify(names) ===
@@ -45,7 +45,9 @@ async function main() {
         'import_sheet',
         'list_sheets',
         'list_workspaces',
+        'preview_diagram',
         'read_sheet',
+        'screenshot_sheet',
         'update_diagram',
         'validate_spec',
       ]),
@@ -84,6 +86,23 @@ async function main() {
     }),
   );
   check('validate_spec accepts a good spec', good.includes('valid'), good);
+
+  // preview_diagram saves nothing, so it is safe here too — and it is the one
+  // check that the native rasteriser and the bundled fonts load at all.
+  const preview = (await client.callTool({
+    name: 'preview_diagram',
+    arguments: {
+      spec: { nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], edges: [{ from: 'a', to: 'b' }] },
+    },
+  })) as { content: { type: string; data?: string; mimeType?: string }[] };
+  const image = preview.content.find((c) => c.type === 'image');
+  const png = image?.data ? Buffer.from(image.data, 'base64') : Buffer.alloc(0);
+  check(
+    'preview_diagram returns a PNG',
+    image?.mimeType === 'image/png' && png.subarray(1, 4).toString() === 'PNG',
+    bodyOf(preview),
+  );
+  check('preview_diagram says nothing was saved', bodyOf(preview).includes('nothing was saved'));
 
   const workspaces = bodyOf(await client.callTool({ name: 'list_workspaces', arguments: {} }));
   check('list_workspaces returns rows', workspaces.split('\n').length >= 1, workspaces.slice(0, 80));

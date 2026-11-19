@@ -1,7 +1,7 @@
 # The life of an MCP tool
 
 How a tool gets designed, built, tested, published, and judged here. Written
-from what actually went wrong building the eight that exist, because most of
+from what actually went wrong building the tools that exist, because most of
 those failures were not visible from inside the code.
 
 ## 1. Design the contract before the code

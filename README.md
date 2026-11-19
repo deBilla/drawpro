@@ -54,7 +54,7 @@ Four properties follow from that design:
 | **Reads back as meaning** | A sheet returns as an outline of shapes and connections, not tens of thousands of characters of coordinates and style |
 | **Three writing tools, not one** | Regenerating layout destroys a hand-drawn sheet, so wording changes (`edit_sheet_text`) and geometry changes (`import_sheet`) get their own tools |
 
-[The eight tools, and which to reach for →](./docs/mcp-tools.md)
+[The ten tools, and which to reach for →](./docs/mcp-tools.md)
 
 ---
 

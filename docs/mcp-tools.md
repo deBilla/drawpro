@@ -1,6 +1,6 @@
 # MCP tools
 
-Eight tools. The one decision that matters is which of the three writing tools
+Ten tools. The one decision that matters is which of the three writing tools
 to use, because two of them are destructive in ways that are not obvious.
 
 | Tool | Needs unlock | |
@@ -9,10 +9,26 @@ to use, because two of them are destructive in ways that are not obvious.
 | `list_sheets` | for names | same |
 | `read_sheet` | yes | returns an outline, not raw Excalidraw JSON |
 | `validate_spec` | no | no side effects; check before writing |
+| `preview_diagram` | no | renders a spec to PNG without saving — iterate on layout |
+| `screenshot_sheet` | yes | renders a saved sheet to PNG so the model can see it |
 | `create_diagram` | no | new sheet from a spec |
 | `update_diagram` | no | **replaces a sheet wholesale**, regenerating layout |
 | `edit_sheet_text` | yes | rewrites named text, preserving everything else |
 | `import_sheet` | no | writes a local `.excalidraw` file in verbatim |
+
+## Seeing the result
+
+`read_sheet` says what is connected; it cannot show a label spilling out of its
+box, an arrow cutting across a node, or a layout too wide to read.
+`screenshot_sheet` and `preview_diagram` return a PNG the model can look at.
+
+Rendering happens locally after decryption, like everything else here — the
+image is never uploaded anywhere but the model's own context. Strokes are clean
+rather than hand-drawn; positions, fills, stroke styles and fonts (Excalifont,
+Virgil, Liberation Sans, Cascadia, bundled as TTF) are as stored, so overflow
+seen in the screenshot is overflow in the editor. Embedded images are drawn as
+placeholders. The long edge defaults to 1600px; pass `width` (up to 4000) to
+read small text on a large sheet.
 
 ## When an account is locked
 

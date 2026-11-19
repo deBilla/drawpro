@@ -13,6 +13,8 @@ import { chmodSync } from 'node:fs';
 const external = [
   '@modelcontextprotocol/sdk',
   '@phi-ag/argon2',
+  // Native binary, picked per platform from optionalDependencies at install.
+  '@resvg/resvg-js',
   '@dagrejs/dagre',
   'fractional-indexing',
   'zod',

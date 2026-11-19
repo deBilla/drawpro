@@ -1,6 +1,6 @@
 {
   "name": "@drawpro/mcp",
-  "version": "0.6.5",
+  "version": "0.7.0",
   "description": "MCP server for DrawPro — read and create end-to-end encrypted Excalidraw diagrams from Claude",
   "license": "MIT",
   "repository": {
@@ -24,6 +24,7 @@
   "main": "./dist/server.js",
   "files": [
     "dist",
+    "fonts",
     "README.md"
   ],
   "engines": {
@@ -40,6 +41,7 @@
     "@dagrejs/dagre": "^1.1.4",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@phi-ag/argon2": "^0.5.19",
+    "@resvg/resvg-js": "^2.6.2",
     "fractional-indexing": "^3.2.0",
     "zod": "^3.23.8"
   },

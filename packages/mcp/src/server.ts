@@ -15,11 +15,12 @@
  * never reaches a tool argument, so it stays out of the model's context.
  */
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Resvg } from '@resvg/resvg-js';
 import { z } from 'zod';
 import {
   DrawProClient,
@@ -42,6 +43,7 @@ import {
   formatOutline,
   growBoxesToFitText,
   measureText,
+  renderSvg,
   validateScene,
   validateSpec,
   type DiagramSpec,
@@ -80,7 +82,7 @@ function api(): DrawProClient {
 
 /** One per server process, so calls from a single Claude session group together. */
 const SESSION_ID = Math.random().toString(36).slice(2, 10);
-const VERSION = '0.6.5';
+const VERSION = '0.7.0';
 
 /** Requests made while handling the current tool call. Reset per call, so a
  *  trace can separate time spent talking to DrawPro from local crypto and
@@ -197,7 +199,10 @@ function summarise(args: ToolArgs): Record<string, unknown> {
   };
 }
 
-type Handler = (args: never) => Promise<{ content: { type: 'text'; text: string }[] }>;
+type Content =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string };
+type Handler = (args: never) => Promise<{ content: Content[] }>;
 
 /** Wrap a handler so every call is timed and recorded. */
 function instrument(name: string, handler: Handler): Handler {
@@ -206,7 +211,7 @@ function instrument(name: string, handler: Handler): Handler {
     inFlight = [];
     try {
       const result = await (handler as (a: ToolArgs) => ReturnType<Handler>)(args);
-      const body = result.content.map((c: { text: string }) => c.text).join('\n');
+      const body = result.content.map((c: Content) => ('text' in c ? c.text : '')).join('\n');
       const apiMs = inFlight.reduce((sum, t) => sum + t.ms, 0);
       const total = Date.now() - started;
       logCall({
@@ -414,7 +419,7 @@ tool(
       ? `\n\nwarnings:\n${built.warnings.map((w) => `  ${w}`).join('\n')}`
       : '';
     return text(
-      `Created "${name}" with ${built.scene.elements.length} elements.\n${sheetUrl(workspace_id, sheet.id)}${warned}`,
+      `Created "${name}" with ${built.scene.elements.length} elements.\n${sheetUrl(workspace_id, sheet.id)}${warned}\n\nscreenshot_sheet shows how it came out.`,
     );
   },
 );
@@ -445,8 +450,142 @@ tool(
       ? `\n\nwarnings:\n${built.warnings.map((w) => `  ${w}`).join('\n')}`
       : '';
     return text(
-      `Updated "${name}" to ${built.scene.elements.length} elements.\n${sheetUrl(workspace_id, sheet_id)}${warned}`,
+      `Updated "${name}" to ${built.scene.elements.length} elements.\n${sheetUrl(workspace_id, sheet_id)}${warned}\n\nscreenshot_sheet shows how it came out.`,
     );
+  },
+);
+
+// ─── Look ────────────────────────────────────────────────────────────────────
+
+/**
+ * The fonts the editor draws with, as TTF.
+ *
+ * Excalidraw ships them as woff2, which resvg cannot read, so they are
+ * converted once (tools/convert-fonts.py) and shipped beside dist/. Using the
+ * real faces matters: the point of a screenshot is to catch text that overflows
+ * its box, and a fallback font with different widths would invent or hide
+ * exactly that.
+ */
+const FONT_DIR = join(__dirname, '..', 'fonts');
+let fontFiles: string[] | undefined;
+function fonts(): string[] {
+  if (!fontFiles) {
+    try {
+      fontFiles = readdirSync(FONT_DIR)
+        .filter((f) => f.endsWith('.ttf'))
+        .map((f) => join(FONT_DIR, f));
+    } catch {
+      fontFiles = [];
+    }
+  }
+  return fontFiles;
+}
+
+/** Long edge, in px. Claude downsamples anything past ~1568 anyway. */
+const DEFAULT_WIDTH = 1600;
+const MAX_WIDTH = 4000;
+
+function screenshot(
+  elements: ExcalidrawElement[],
+  appState: Record<string, unknown>,
+  width: number | undefined,
+): { png: string; summary: string } | { error: string } {
+  const { svg, bounds } = renderSvg(elements, appState);
+  if (bounds.width === 0 && bounds.height === 0) return { error: 'The sheet is empty — nothing to draw.' };
+
+  const sceneW = bounds.width + 80;
+  const sceneH = bounds.height + 80;
+  const target = Math.min(width ?? DEFAULT_WIDTH, MAX_WIDTH);
+  // Fit the long edge to the target, but never blow a small diagram up past
+  // 2x — that only adds pixels, not legibility.
+  const scale = Math.min(target / Math.max(sceneW, sceneH), 2);
+
+  const png = new Resvg(svg, {
+    fitTo: { mode: 'zoom', value: scale },
+    font: { fontFiles: fonts(), loadSystemFonts: true, defaultFontFamily: 'Excalifont' },
+  })
+    .render()
+    .asPng();
+
+  const px = `${Math.round(sceneW * scale)}x${Math.round(sceneH * scale)}px`;
+  const small =
+    scale < 0.6
+      ? ' Text is rendered small at this size; pass a larger width to inspect labels.'
+      : '';
+  return {
+    png: Buffer.from(png).toString('base64'),
+    summary:
+      `${px} at ${scale.toFixed(2)}x of a ${Math.round(bounds.width)}x${Math.round(bounds.height)} scene.${small}\n` +
+      'Rendered with clean strokes instead of the editor\'s hand-drawn ones; positions, ' +
+      'text and fonts are as stored.',
+  };
+}
+
+const widthArg = z
+  .number()
+  .int()
+  .min(200)
+  .max(MAX_WIDTH)
+  .optional()
+  .describe(`Long edge of the image in px. Default ${DEFAULT_WIDTH}; raise it to read small text on a large sheet.`);
+
+tool(
+  'screenshot_sheet',
+  'Render a DrawPro sheet to a PNG and look at it. Use it after create_diagram, ' +
+    'update_diagram, edit_sheet_text or import_sheet to check the result the way ' +
+    'a person will see it — labels spilling out of boxes, arrows crossing nodes, ' +
+    'overlapping shapes, a layout too wide to read — none of which read_sheet\'s ' +
+    'outline can show. Rendered locally after decryption; nothing leaves this machine.',
+  {
+    workspace_id: z.string(),
+    sheet_id: z.string(),
+    width: widthArg,
+  },
+  async ({ workspace_id, sheet_id, width }) => {
+    const unlocked = await unlockedKey();
+    if ('error' in unlocked) return text(unlocked.error);
+
+    const scene = await api().readSheet(workspace_id, sheet_id, unlocked.key);
+    const shot = screenshot(scene.elements as ExcalidrawElement[], scene.appState ?? {}, width);
+    if ('error' in shot) return text(shot.error);
+
+    return {
+      content: [
+        { type: 'image' as const, data: shot.png, mimeType: 'image/png' },
+        {
+          type: 'text' as const,
+          text: `sheet: ${scene.name}\nelements: ${scene.elements.length}\n${shot.summary}\n${sheetUrl(workspace_id, sheet_id)}`,
+        },
+      ],
+    };
+  },
+);
+
+tool(
+  'preview_diagram',
+  'Render a diagram spec to a PNG without saving anything. Use it to check a ' +
+    'layout before create_diagram or update_diagram, and iterate on the spec ' +
+    'until it looks right.',
+  { ...specShape, width: widthArg },
+  async ({ spec, width }) => {
+    const built = buildOrExplain(spec as DiagramSpec);
+    if (!built.ok) return text(built.error);
+
+    const shot = screenshot(built.scene.elements, built.scene.appState, width);
+    if ('error' in shot) return text(shot.error);
+
+    const warned = built.warnings.length
+      ? `\n\nwarnings:\n${built.warnings.map((w) => `  ${w}`).join('\n')}`
+      : '';
+    return {
+      content: [
+        { type: 'image' as const, data: shot.png, mimeType: 'image/png' },
+        {
+          type: 'text' as const,
+          text: `Preview only — nothing was saved. ${built.scene.elements.length} elements.\n${shot.summary}${warned}`,
+        },
+      ],
+    };
   },
 );
 

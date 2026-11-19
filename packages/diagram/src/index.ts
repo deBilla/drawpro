@@ -23,6 +23,7 @@ export { measureText, measureLine } from './text';
 export { growBoxesToFitText, type Resize } from './fit';
 export { describeScene, formatOutline, type SceneOutline } from './describe';
 export { validateSpec, validateScene, type ValidationIssue } from './validate';
+export { renderSvg, type RenderOptions, type RenderedSvg } from './render';
 
 const ARROW_GAP = 4;
 const TITLE_FONT_SIZE = 28;
